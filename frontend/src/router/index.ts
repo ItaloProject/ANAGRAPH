@@ -13,8 +13,24 @@ export default route(function () {
     history: createHistory(process.env.VUE_ROUTER_BASE),
   })
 
-  // Auth guard desativado para uso local
-  // router.beforeEach(...)
+  // ── Guard de autenticação ────────────────────────────────────────────────
+  // Importação lazy para evitar circular dep (Pinia ainda não inicializado no boot)
+  router.beforeEach(async (to) => {
+    // Rotas públicas — sempre acessíveis
+    const publicPaths = ['/login', '/auth/callback']
+    if (publicPaths.some(p => to.path.startsWith(p))) return true
+
+    // Rotas protegidas — verifica token no localStorage
+    const raw = localStorage.getItem('deriv_account')
+    const account = raw ? JSON.parse(raw) : null
+    const isLoggedIn = !!account?.token
+
+    if (to.meta.requiresAuth && !isLoggedIn) {
+      return { path: '/login' }
+    }
+
+    return true
+  })
 
   return router
 })

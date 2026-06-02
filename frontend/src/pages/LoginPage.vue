@@ -76,11 +76,23 @@
 import { ref } from 'vue'
 
 const loading = ref(false)
-const APP_ID  = '33qwHdRH3vY9cCAeAzIa7'
+
+// App ID registrado no portal Deriv Developers
+// ⚠️  O redirect_uri abaixo DEVE estar cadastrado em:
+//     https://app.deriv.com/account/api-token → OAuth Apps
+//     Adicione: https://SEU_DOMINIO.vercel.app/#/auth/callback
+const APP_ID = import.meta.env.VITE_DERIV_APP_ID ?? '33qwHdRH3vY9cCAeAzIa7'
 
 function loginWithDeriv() {
   loading.value = true
-  const redirectUri = encodeURIComponent(window.location.origin + window.location.pathname + '#/auth/callback')
+
+  // Com hash routing, o redirect_uri inclui o hash:
+  // https://app.com/#/auth/callback
+  // A Deriv appenda os params no hash:
+  // https://app.com/#/auth/callback?acct1=VRTCX&token1=...
+  const base = window.location.origin + window.location.pathname
+  const redirectUri = encodeURIComponent(base + '#/auth/callback')
+
   const url = `https://oauth.deriv.com/oauth2/authorize?app_id=${APP_ID}&l=PT&brand=deriv&redirect_uri=${redirectUri}`
   window.location.href = url
 }
