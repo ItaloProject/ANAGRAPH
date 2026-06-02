@@ -573,12 +573,16 @@ class AnalyzerService:
 
         # ── Volatility / trend filter ─────────────────────────────────────
         if adx < self.min_adx:
-            r = self._wait(
-                0.0,
+            # Retorna indicadores REAIS (não zeros) para a UI mostrar análise viva
+            r = AnalysisResult(
+                "WAIT", 0.0, rsi, macd, macd_s, bb_u, bb_l, bb_m,
+                e9, e21,
                 f"Mercado lateral (ADX {adx:.1f} < {self.min_adx:.0f}) — aguardando tendência",
                 0, 0, adx,
             )
-            r.session = session_name
+            r.atr        = current_atr
+            r.atr_ratio  = atr_ratio
+            r.session    = session_name
             return r
 
         buy_score  = 0
