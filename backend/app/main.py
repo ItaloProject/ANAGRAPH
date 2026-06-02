@@ -240,11 +240,14 @@ async def account_status():
 
 @app.get("/api/bot/credentials")
 async def credentials_status():
+    aid = DEFAULT_ACCOUNT_ID
     return {
         "token_configured":   bool(DEFAULT_API_TOKEN),
-        "account_configured": bool(DEFAULT_ACCOUNT_ID),
+        "account_configured": bool(aid),
         "app_id":             DEFAULT_APP_ID,
-        "account_id_hint":    DEFAULT_ACCOUNT_ID[:3] + "..." if DEFAULT_ACCOUNT_ID else "",
+        "account_id":         aid,
+        "account_id_hint":    aid[:3] + "..." + aid[-2:] if len(aid) > 5 else aid,
+        "is_demo":            aid.upper().startswith(("VRT", "DOT")),
     }
 
 

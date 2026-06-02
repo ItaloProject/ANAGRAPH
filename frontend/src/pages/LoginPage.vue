@@ -156,8 +156,18 @@ onMounted(async () => {
   if (oauthError.value) sessionStorage.removeItem('oauth_error')
 
   try {
-    const { data } = await botApi.session()
-    serverSession.value = data as ServerSession
+    const { data } = await botApi.credentials()
+    if (data.token_configured && data.account_configured) {
+      serverSession.value = {
+        available:     true,
+        account_id:    data.account_id,
+        account_hint:  data.account_id_hint,
+        is_demo:       data.is_demo ?? true,
+        currency:      'USD',
+      }
+    } else {
+      serverSession.value = { available: false }
+    }
   } catch {
     serverSession.value = { available: false }
   } finally {
