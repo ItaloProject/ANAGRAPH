@@ -204,24 +204,38 @@ async def health():
 
 @app.get("/api/account/status")
 async def account_status():
-    """Saldo real da conta DERIV configurada no .env."""
+    """Saldo da conta DERIV. Usa a conexão do bot se ele estiver rodando."""
     if not DEFAULT_API_TOKEN or not DEFAULT_ACCOUNT_ID:
         raise HTTPException(400, "Credenciais DERIV não configuradas")
 
+    # Usa conexão já aberta do bot (evita criar nova conexão WebSocket)
+    if _bot and _bot.running and _bot.client.authorized:
+        try:
+            info = await asyncio.wait_for(_bot.client.get_account_info(), timeout=15.0)
+            return info
+        except Exception as e:
+            logger.warning(f"account_status via bot failed: {e}")
+
+    # Fallback: cria conexão temporária com timeout
     client = DerivClient(
         app_id=DEFAULT_APP_ID,
         api_token=DEFAULT_API_TOKEN,
         account_id=DEFAULT_ACCOUNT_ID,
     )
     try:
-        await client.connect()
-        info = await client.get_account_info()
+        await asyncio.wait_for(client.connect(), timeout=20.0)
+        info = await asyncio.wait_for(client.get_account_info(), timeout=10.0)
         return info
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "Timeout ao conectar à DERIV. Tente novamente.")
     except Exception as e:
         logger.error(f"account_status error: {e}")
         raise HTTPException(502, f"Falha ao consultar DERIV: {e}")
     finally:
-        await client.disconnect()
+        try:
+            await asyncio.wait_for(client.disconnect(), timeout=5.0)
+        except Exception:
+            pass
 
 
 @app.get("/api/bot/credentials")
@@ -248,19 +262,32 @@ async def daily_stats_from_deriv():
 
     from datetime import date, datetime
 
-    client = DerivClient(
-        app_id=DEFAULT_APP_ID,
-        api_token=DEFAULT_API_TOKEN,
-        account_id=DEFAULT_ACCOUNT_ID,
-    )
-    try:
-        await client.connect()
-        txs = await client.get_profit_table(limit=100)
-    except Exception as e:
-        logger.error(f"daily_stats error: {e}")
-        raise HTTPException(502, f"Falha ao consultar DERIV: {e}")
-    finally:
-        await client.disconnect()
+    # Usa conexão do bot se disponível
+    if _bot and _bot.running and _bot.client.authorized:
+        try:
+            txs = await asyncio.wait_for(_bot.client.get_profit_table(limit=100), timeout=15.0)
+        except Exception as e:
+            logger.warning(f"daily_stats via bot failed: {e}")
+            txs = []
+    else:
+        client = DerivClient(
+            app_id=DEFAULT_APP_ID,
+            api_token=DEFAULT_API_TOKEN,
+            account_id=DEFAULT_ACCOUNT_ID,
+        )
+        try:
+            await asyncio.wait_for(client.connect(), timeout=20.0)
+            txs = await asyncio.wait_for(client.get_profit_table(limit=100), timeout=10.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(504, "Timeout ao conectar à DERIV. Tente novamente.")
+        except Exception as e:
+            logger.error(f"daily_stats error: {e}")
+            raise HTTPException(502, f"Falha ao consultar DERIV: {e}")
+        finally:
+            try:
+                await asyncio.wait_for(client.disconnect(), timeout=5.0)
+            except Exception:
+                pass
 
     today = date.today()
     symbol = "frxEURUSD"
