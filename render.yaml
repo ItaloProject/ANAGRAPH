@@ -1,0 +1,29 @@
+﻿services:
+  - type: web
+    name: anagraph-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter              # plano pago ($7/mo) — nao dorme, essencial para bot de trading
+    healthCheckPath: /api/health
+    envVars:
+      - key: DERIV_APP_ID
+        sync: false            # preencher no painel do Render
+      - key: DERIV_API_TOKEN
+        sync: false
+      - key: DERIV_ACCOUNT_ID
+        sync: false
+      - key: USD_BRL_RATE
+        value: "5.85"
+      - key: DAILY_LOSS_LIMIT_BRL
+        value: "100"
+      - key: DAILY_PROFIT_TARGET_BRL
+        value: "150"
+      - key: CONTRACT_DURATION
+        value: "15"
+      - key: STAKE_AMOUNT
+        value: "1.0"
+      - key: MAX_STAKE
+        value: "10.0"
+      - key: MIN_CONFIDENCE
+        value: "78.0"

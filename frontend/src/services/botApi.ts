@@ -34,7 +34,10 @@ export const botApi = {
 }
 
 function wsUrl(): string {
-  if (typeof window === 'undefined') return 'ws://localhost:8000/ws'
+  // Prod: VITE_WS_BASE = wss://anagraph-api.onrender.com
+  const override = import.meta.env.VITE_WS_BASE as string | undefined
+  if (override) return `${override.replace(/\/$/, '')}/ws`
+  if (typeof window === 'undefined') return 'ws://localhost:8001/ws'
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${proto}//${window.location.host}/ws`
 }

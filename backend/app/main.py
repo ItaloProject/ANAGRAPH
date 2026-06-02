@@ -27,9 +27,19 @@ DEFAULT_APP_ID      = os.getenv("DERIV_APP_ID", "33qwHdRH3vY9cCAeAzIa7")
 
 app = FastAPI(title="ANAGRAPH API", version="1.1.0")
 
+ALLOWED_ORIGINS = [
+    "http://localhost:9000",          # dev Quasar
+    "http://localhost:5173",          # dev Vite
+    os.getenv("FRONTEND_URL", ""),    # ex: https://anagraph.vercel.app
+    os.getenv("FRONTEND_URL_2", ""),  # domínio customizado opcional
+]
+# Remove vazios e mantém * em dev
+_origins = [o for o in ALLOWED_ORIGINS if o] or ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",  # qualquer deploy do Vercel
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
