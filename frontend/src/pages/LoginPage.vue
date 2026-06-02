@@ -155,24 +155,31 @@ const manualToken    = ref('')
 onMounted(async () => {
   if (oauthError.value) sessionStorage.removeItem('oauth_error')
 
-  try {
-    const { data } = await botApi.credentials()
-    if (data.token_configured && data.account_configured) {
-      serverSession.value = {
-        available:     true,
-        account_id:    data.account_id || 'SERVER',
-        account_hint:  data.account_id_hint || data.account_id || 'Conta configurada',
-        is_demo:       data.is_demo ?? true,
-        currency:      'USD',
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { data } = await botApi.credentials()
+      if (data.token_configured && data.account_configured) {
+        serverSession.value = {
+          available:     true,
+          account_id:    data.account_id || 'SERVER',
+          account_hint:  data.account_id_hint || data.account_id || 'Conta configurada',
+          is_demo:       data.is_demo ?? true,
+          currency:      'USD',
+        }
+        break
       }
-    } else {
+      serverSession.value = { available: false }
+      break
+    } catch {
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 4000))
+        continue
+      }
       serverSession.value = { available: false }
     }
-  } catch {
-    serverSession.value = { available: false }
-  } finally {
-    checkingServer.value = false
   }
+
+  checkingServer.value = false
 })
 
 function enterWithServer() {
