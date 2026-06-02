@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 import ta
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import TYPE_CHECKING, Literal, Optional
+
+if TYPE_CHECKING:
+    from app.services.tick_flow import FlowState
 
 
 @dataclass
@@ -824,6 +829,7 @@ class AnalyzerService:
         candles_primary: list[dict],
         candles_h1: list[dict],
         candles_h4: list[dict],
+        tick_flow: Optional["FlowState"] = None,
     ) -> AnalysisResult:
         """
         Multi-timeframe analysis:
@@ -878,8 +884,26 @@ class AnalyzerService:
             result.confidence = min(97.0, round(result.confidence + 6.0, 1))
             result.reason     = f"[MTF✓ H1:{h1_bias} H4:{h4_bias}] {result.reason}"
         else:
-            # Partial: H4 neutral or H1 neutral — still allowed, no bonus
             result.reason = f"[MTF~ H1:{h1_bias} H4:{h4_bias}] {result.reason}"
+
+        # ── Tick Flow (mercado em tempo real) ─────────────────────────────
+        if tick_flow is not None and (tick_flow.buy_pts > 0 or tick_flow.sell_pts > 0):
+            if result.signal == "BUY" and tick_flow.buy_pts > tick_flow.sell_pts:
+                boost = min(5.0, tick_flow.buy_pts * 1.5)
+                result.confidence = min(97.0, round(result.confidence + boost, 1))
+                if tick_flow.reasons:
+                    result.reason = f"[FLOW✓ {', '.join(tick_flow.reasons[:2])}] {result.reason}"
+            elif result.signal == "SELL" and tick_flow.sell_pts > tick_flow.buy_pts:
+                boost = min(5.0, tick_flow.sell_pts * 1.5)
+                result.confidence = min(97.0, round(result.confidence + boost, 1))
+                if tick_flow.reasons:
+                    result.reason = f"[FLOW✓ {', '.join(tick_flow.reasons[:2])}] {result.reason}"
+            elif result.signal == "BUY" and tick_flow.sell_pts > tick_flow.buy_pts:
+                result.confidence = max(0, round(result.confidence - 4.0, 1))
+                result.reason = f"[FLOW✗ contra-fluxo vendedor] {result.reason}"
+            elif result.signal == "SELL" and tick_flow.buy_pts > tick_flow.sell_pts:
+                result.confidence = max(0, round(result.confidence - 4.0, 1))
+                result.reason = f"[FLOW✗ contra-fluxo comprador] {result.reason}"
 
         return result
 

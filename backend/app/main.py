@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_API_TOKEN   = os.getenv("DERIV_API_TOKEN", "").strip()
 DEFAULT_ACCOUNT_ID  = os.getenv("DERIV_ACCOUNT_ID", "").strip()
 DEFAULT_APP_ID      = os.getenv("DERIV_APP_ID", "33qwHdRH3vY9cCAeAzIa7").strip()
+ANTHROPIC_API_KEY   = os.getenv("ANTHROPIC_API_KEY", "").strip()
 BOT_AUTOSTART       = os.getenv("BOT_AUTOSTART", "true").lower() in ("1", "true", "yes")
 
 _bot: Optional["TradingBot"] = None
@@ -173,6 +174,7 @@ async def _launch_bot(req: BotStartRequest) -> dict:
         analyzer_min_adx=req.analyzer_min_adx,
         analyze_every=req.analyze_every,
         session_mode=req.session_mode,
+        anthropic_api_key=ANTHROPIC_API_KEY,
         on_signal=lambda d: _broadcast("signal", d),
         on_trade=lambda d: _broadcast("trade", d),
         on_tick=lambda d: _broadcast("tick", d),

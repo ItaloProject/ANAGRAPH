@@ -9,6 +9,9 @@ from app.services.analyzer import AnalyzerService, AnalysisResult
 from app.services.auto_adjuster import AdaptiveController
 from app.services.deriv_client import DerivClient
 from app.services.risk_manager import RiskManager, RiskConfig
+from app.services.tick_flow import TickFlowAnalyzer
+from app.services.learning_engine import LearningEngine
+from app.services.news_service import NewsService
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +105,7 @@ class TradingBot:
         on_stats: Optional[Callable] = None,
         analyze_every: int = 3,
         session_mode: str = "london_ny",
+        anthropic_api_key: str = "",
     ):
         self.api_token         = api_token
         self.app_id            = app_id
@@ -136,7 +140,7 @@ class TradingBot:
         self._htf_counter = 0
         self._last_error_at: float = 0.0
         self._error_cooldown: int  = 120
-        self._stop_reason: str     = ""     # razão do auto-stop
+        self._stop_reason: str     = ""
 
         self.on_signal = on_signal
         self.on_trade  = on_trade
@@ -146,6 +150,15 @@ class TradingBot:
         self.last_signal: dict = {}
         self._reconcile_counter = 0
         self._trade_lock = asyncio.Lock()
+
+        # ── Inteligência avançada ─────────────────────────────────────────
+        self.tick_flow = TickFlowAnalyzer(buffer_size=300)
+        self.learning  = LearningEngine()
+        self.news: Optional[NewsService] = (
+            NewsService(api_key=anthropic_api_key) if anthropic_api_key else None
+        )
+        self._news_context: dict = {}
+        self._news_refresh_counter = 0
 
     def _rebuild_stats_from_trades(self):
         """Recalcula stats do dia a partir da lista de trades (sem duplicar contagem)."""
@@ -357,6 +370,8 @@ class TradingBot:
                 "high": price, "low": price, "close": price,
             })
 
+        self.tick_flow.push(price, float(epoch))
+
         if self.on_tick:
             asyncio.create_task(self.on_tick({"price": price, "epoch": epoch}))
 
@@ -386,11 +401,64 @@ class TradingBot:
         self.analyzer.min_score_gap = max(2, self.analyzer.min_score_gap)
         self.analyzer.min_adx       = adaptive.min_adx
 
+        # ── Tick flow ─────────────────────────────────────────────────────
+        flow = self.tick_flow.analyze(window=80)
+
         result = self.analyzer.analyze_mtf(
             candle_list,
             list(self.candles_h1),
             list(self.candles_h4),
+            tick_flow=flow,
         )
+
+        # ── Notícias + sentimento (refresh a cada ~25 análises ≈ 5min) ────
+        self._news_refresh_counter += 1
+        if self.news and self._news_refresh_counter % 25 == 1:
+            try:
+                self._news_context = await self.news.get_market_context()
+            except Exception as e:
+                logger.warning(f"News refresh failed: {e}")
+
+        # ── Ajuste de confiança por notícias ──────────────────────────────
+        news_mult, news_label = 1.0, ""
+        if self._news_context and result.signal != "WAIT":
+            news_mult, news_label = self.news.news_score_adjustment(
+                self._news_context, result.signal
+            )
+            if news_mult == 0.0:
+                result.signal     = "WAIT"
+                result.confidence = 0.0
+                result.reason     = f"{news_label} | {result.reason}"
+            elif news_mult != 1.0:
+                result.confidence = round(result.confidence * news_mult, 1)
+                if news_label:
+                    result.reason = f"{news_label} | {result.reason}"
+
+        # ── Ajuste de confiança por aprendizado ───────────────────────────
+        learning_label = ""
+        if result.signal != "WAIT":
+            base_payload = {
+                "signal":      result.signal,
+                "confidence":  result.confidence,
+                "rsi":         result.rsi,
+                "macd":        result.macd,
+                "macd_signal": result.macd_signal,
+                "bb_upper":    result.bb_upper,
+                "bb_lower":    result.bb_lower,
+                "adx":         result.adx,
+                "atr_ratio":   result.atr_ratio,
+                "buy_score":   result.buy_score,
+                "sell_score":  result.sell_score,
+                "patterns":    result.patterns,
+                "divergences": result.divergences,
+                "price":       candle_list[-1]["close"] if candle_list else 0,
+                "h1_bias":     result.h1_bias,
+                "h4_bias":     result.h4_bias,
+                "session":     result.session,
+            }
+            result.confidence, learning_label = self.learning.adjust_confidence(
+                base_payload, result.confidence
+            )
 
         if self.on_signal:
             signal_payload = {
@@ -416,6 +484,18 @@ class TradingBot:
                 "patterns":    result.patterns,
                 "divergences": result.divergences,
                 "price":       candle_list[-1]["close"] if candle_list else 0,
+                # ── Novas inteligências ────────────────────────────────────
+                "tick_flow": {
+                    "velocity":   flow.velocity,
+                    "momentum":   flow.momentum,
+                    "imbalance":  flow.imbalance,
+                    "smoothness": flow.smoothness,
+                    "buy_pts":    flow.buy_pts,
+                    "sell_pts":   flow.sell_pts,
+                },
+                "news": self._news_context,
+                "learning_label": learning_label,
+                "learning": self.learning.stats(),
             }
             self.last_signal = signal_payload
             asyncio.create_task(self.on_signal(signal_payload))
@@ -495,6 +575,9 @@ class TradingBot:
 
             self._merge_trade_by_contract(trade)
 
+            # Registra sinal no learning engine para aprendizado futuro
+            self.learning.record_signal(self.last_signal, contract_id=trade.contract_id)
+
             direction = "RISE" if result.signal == "BUY" else "FALL"
             logger.info(
                 f"Trade OPENED | {direction} {self.asset} {self.contract_duration}m | "
@@ -544,6 +627,10 @@ class TradingBot:
 
         self.risk.on_trade_closed(trade.pnl)
         self.adaptive.record(won)
+
+        # Registra outcome para o learning engine aprender
+        if trade.contract_id:
+            self.learning.record_outcome(trade.contract_id, trade.status)
 
         logger.info(
             f"Trade CLOSED | {trade.status} | "
