@@ -26,6 +26,8 @@ DEFAULT_API_TOKEN   = os.getenv("DERIV_API_TOKEN", "").strip()
 DEFAULT_ACCOUNT_ID  = os.getenv("DERIV_ACCOUNT_ID", "").strip()
 DEFAULT_APP_ID      = os.getenv("DERIV_APP_ID", "33qwHdRH3vY9cCAeAzIa7").strip()
 ANTHROPIC_API_KEY   = os.getenv("ANTHROPIC_API_KEY", "").strip()
+TELEGRAM_TOKEN      = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID    = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 BOT_AUTOSTART       = os.getenv("BOT_AUTOSTART", "true").lower() in ("1", "true", "yes")
 
 _bot: Optional["TradingBot"] = None
@@ -175,6 +177,8 @@ async def _launch_bot(req: BotStartRequest) -> dict:
         analyze_every=req.analyze_every,
         session_mode=req.session_mode,
         anthropic_api_key=ANTHROPIC_API_KEY,
+        telegram_token=TELEGRAM_TOKEN,
+        telegram_chat_id=TELEGRAM_CHAT_ID,
         on_signal=lambda d: _broadcast("signal", d),
         on_trade=lambda d: _broadcast("trade", d),
         on_tick=lambda d: _broadcast("tick", d),

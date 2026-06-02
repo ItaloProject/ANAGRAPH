@@ -12,6 +12,7 @@ from app.services.risk_manager import RiskManager, RiskConfig
 from app.services.tick_flow import TickFlowAnalyzer
 from app.services.learning_engine import LearningEngine
 from app.services.news_service import NewsService
+from app.services.telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,8 @@ class TradingBot:
         analyze_every: int = 3,
         session_mode: str = "london_ny",
         anthropic_api_key: str = "",
+        telegram_token: str = "",
+        telegram_chat_id: str = "",
     ):
         self.api_token         = api_token
         self.app_id            = app_id
@@ -157,8 +160,13 @@ class TradingBot:
         self.news: Optional[NewsService] = (
             NewsService(api_key=anthropic_api_key) if anthropic_api_key else None
         )
+        self.telegram: Optional[TelegramService] = (
+            TelegramService(token=telegram_token, chat_id=telegram_chat_id)
+            if telegram_token and telegram_chat_id else None
+        )
         self._news_context: dict = {}
         self._news_refresh_counter = 0
+        self._brl_rate: float = 5.85
 
     def _rebuild_stats_from_trades(self):
         """Recalcula stats do dia a partir da lista de trades (sem duplicar contagem)."""
@@ -496,6 +504,8 @@ class TradingBot:
                 "news": self._news_context,
                 "learning_label": learning_label,
                 "learning": self.learning.stats(),
+                "vwap":      round(result.vwap, 5),
+                "fib_level": result.fib_level,
             }
             self.last_signal = signal_payload
             asyncio.create_task(self.on_signal(signal_payload))
@@ -518,7 +528,8 @@ class TradingBot:
 
         # Use adaptive confidence threshold (may be stricter than base)
         effective_conf = max(self.risk.config.min_confidence, self.adaptive.state.min_confidence)
-        decision = self.risk.can_trade(result.confidence, result.signal)
+        win_rate = self.learning.stats().get("win_rate", 0.0) / 100.0
+        decision = self.risk.can_trade(result.confidence, result.signal, win_rate)
         if not decision.allowed:
             pass
         elif result.confidence < effective_conf:
@@ -533,7 +544,7 @@ class TradingBot:
             if self.risk.stats.open_positions >= self.risk.config.max_open_positions:
                 logger.info("Trade blocked: operação já aberta ou em abertura")
                 return
-            decision = self.risk.can_trade(result.confidence, result.signal)
+            decision = self.risk.can_trade(result.confidence, result.signal, win_rate)
             if not decision.allowed:
                 logger.info(f"Trade blocked: {decision.reason}")
                 return
@@ -577,6 +588,17 @@ class TradingBot:
 
             # Registra sinal no learning engine para aprendizado futuro
             self.learning.record_signal(self.last_signal, contract_id=trade.contract_id)
+
+            # Notificação Telegram
+            if self.telegram:
+                asyncio.create_task(self.telegram.notify_trade_opened(
+                    signal=result.signal,
+                    asset=self.asset,
+                    stake_usd=stake,
+                    confidence=result.confidence,
+                    reason=result.reason,
+                    brl_rate=self._brl_rate,
+                ))
 
             direction = "RISE" if result.signal == "BUY" else "FALL"
             logger.info(
@@ -632,6 +654,15 @@ class TradingBot:
         if trade.contract_id:
             self.learning.record_outcome(trade.contract_id, trade.status)
 
+        # Notificação Telegram
+        if self.telegram:
+            asyncio.create_task(self.telegram.notify_trade_closed(
+                signal=trade.signal,
+                status=trade.status,
+                pnl_usd=trade.pnl,
+                brl_rate=self._brl_rate,
+            ))
+
         logger.info(
             f"Trade CLOSED | {trade.status} | "
             f"P&L=${trade.pnl:+.2f} | {trade.asset} {trade.duration_minutes}m"
@@ -678,6 +709,8 @@ class TradingBot:
         if stop_reason:
             self._stop_reason = stop_reason
             logger.warning(f"AUTO-STOP: {stop_reason}")
+            if self.telegram:
+                asyncio.create_task(self.telegram.notify_auto_stop(stop_reason))
             # Notifica frontend antes de parar
             if self.on_stats:
                 summary = {**self.risk.summary, "auto_stop_reason": stop_reason}

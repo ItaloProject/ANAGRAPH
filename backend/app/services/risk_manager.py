@@ -59,7 +59,7 @@ class RiskManager:
                 current_stake=self.config.stake_amount,
             )
 
-    def can_trade(self, confidence: float, signal: str) -> RiskDecision:
+    def can_trade(self, confidence: float, signal: str, win_rate: float = 0.0) -> RiskDecision:
         self._reset_if_new_day()
 
         if signal == "WAIT":
@@ -100,17 +100,40 @@ class RiskManager:
                     f"Cooldown pós-loss ({mins}:{secs:02d} restantes)",
                 )
 
-        stake = self._calculate_stake()
-        if stake > self.config.max_stake:
-            stake = self.config.max_stake
-
+        stake = self._calculate_stake(confidence, win_rate)
         return RiskDecision(True, "Operação aprovada", stake)
 
-    def _calculate_stake(self) -> float:
+    def _calculate_stake(self, confidence: float = 0.0, win_rate: float = 0.0) -> float:
+        """
+        Stake dinâmico em três camadas:
+          1. Martingale (se ativado) — multiplica após loss
+          2. Kelly Criterion (baseado em win_rate histórico)
+          3. Confidence scaling — boost proporcional à confiança acima do mínimo
+        Resultado sempre limitado por max_stake.
+        """
+        base = self.config.stake_amount
+
         if self.config.martingale and self.stats.current_streak < 0:
-            multiplier = self.config.martingale_multiplier ** abs(self.stats.current_streak)
-            return min(self.config.stake_amount * multiplier, self.config.max_stake)
-        return self.config.stake_amount
+            mult = self.config.martingale_multiplier ** abs(self.stats.current_streak)
+            return min(base * mult, self.config.max_stake)
+
+        # ── Kelly Criterion para binary options ───────────────────────────
+        # Para ser positivo: win_rate precisa ser > 1/(1+payout) ≈ 54% com payout 0.85
+        DERIV_PAYOUT = 0.85
+        if win_rate >= 0.55:
+            kelly = (win_rate * DERIV_PAYOUT - (1.0 - win_rate)) / DERIV_PAYOUT
+            # Usa 30% do Kelly (conservador) — nunca mais que 1.6× o stake base
+            kelly_factor = 1.0 + min(0.6, kelly * 0.30)
+            base = base * kelly_factor
+
+        # ── Confidence scaling ────────────────────────────────────────────
+        # 78% (mínimo) → ×1.0 | 88% → ×1.25 | 95%+ → ×1.5
+        min_conf = self.config.min_confidence
+        if confidence > min_conf:
+            conf_factor = 1.0 + (confidence - min_conf) / max(1.0, 95.0 - min_conf) * 0.5
+            base = base * min(1.5, conf_factor)
+
+        return round(min(base, self.config.max_stake), 2)
 
     def on_trade_opened(self):
         self.stats.open_positions += 1

@@ -34,6 +34,8 @@ class AnalysisResult:
     session: str = ""
     patterns: list = None
     divergences: list = None
+    vwap: float = 0.0
+    fib_level: str = ""
 
     def __post_init__(self):
         if self.patterns is None:
@@ -543,6 +545,97 @@ class AnalyzerService:
 
         return buy_pts, sell_pts, reasons
 
+    def _compute_vwap(self, df: pd.DataFrame, window: int = 48) -> float:
+        """
+        Rolling VWAP de 12h (48 candles M15).
+        Usa ATR como proxy de volume — candles mais voláteis têm mais peso.
+        """
+        n   = min(window, len(df))
+        sub = df.iloc[-n:]
+        tp  = (sub["high"] + sub["low"] + sub["close"]) / 3
+
+        try:
+            atr_s = ta.volatility.AverageTrueRange(
+                sub["high"], sub["low"], sub["close"], window=min(14, n)
+            ).average_true_range()
+            weights = atr_s.fillna(atr_s.mean()).clip(lower=1e-8)
+        except Exception:
+            weights = pd.Series([1.0] * n, index=sub.index)
+
+        denom = weights.sum()
+        if denom == 0:
+            return float(tp.iloc[-1])
+        return float((tp * weights).sum() / denom)
+
+    def _detect_fibonacci(
+        self,
+        df: pd.DataFrame,
+        lookback: int = 80,
+    ) -> tuple[int, int, list[str], str]:
+        """
+        Auto Fibonacci retracement.
+
+        1. Identifica o swing dominante (alta ou baixa) nos últimos `lookback` candles
+        2. Traça os níveis 23.6%, 38.2%, 50%, 61.8%, 78.6%
+        3. Pontua se o preço atual está em zona de suporte/resistência Fibonacci
+
+        Retorna (buy_pts, sell_pts, reasons, fib_level_name).
+        """
+        n = len(df)
+        if n < lookback + 5:
+            return 0, 0, [], ""
+
+        sub  = df.iloc[-lookback:]
+        high = sub["high"].values
+        low  = sub["low"].values
+        price = float(df["close"].iloc[-1])
+
+        swing_high     = high.max()
+        swing_low      = low.min()
+        swing_high_idx = int(high.argmax())
+        swing_low_idx  = int(low.argmin())
+
+        range_ = swing_high - swing_low
+        if range_ < price * 0.001:   # range < 0.1% — mercado flat demais
+            return 0, 0, [], ""
+
+        tol = price * 0.0004   # tolerância de 0.04%
+
+        FIB_LEVELS = [
+            (0.236, "23.6%"),
+            (0.382, "38.2%"),
+            (0.500, "50%"),
+            (0.618, "61.8%"),
+            (0.786, "78.6%"),
+        ]
+
+        buy_pts = sell_pts = 0
+        reasons: list[str] = []
+        fib_level = ""
+
+        if swing_high_idx < swing_low_idx:
+            # Movimento dominante: BAIXA (high primeiro, depois low)
+            # Fib traçado do high ao low — preço voltando para cima = resistências
+            for ratio, name in FIB_LEVELS:
+                level = swing_low + range_ * ratio
+                if abs(price - level) <= tol * 2:
+                    sell_pts += 2
+                    fib_level = name
+                    reasons.append(f"Fib resistência {name} ({level:.5f})")
+                    break
+        else:
+            # Movimento dominante: ALTA (low primeiro, depois high)
+            # Fib traçado do low ao high — preço voltando para baixo = suportes
+            for ratio, name in FIB_LEVELS:
+                level = swing_high - range_ * ratio
+                if abs(price - level) <= tol * 2:
+                    buy_pts += 2
+                    fib_level = name
+                    reasons.append(f"Fib suporte {name} ({level:.5f})")
+                    break
+
+        return buy_pts, sell_pts, reasons, fib_level
+
     def analyze(self, candles: list[dict]) -> AnalysisResult:
         """Single-timeframe confluence analysis."""
         df = pd.DataFrame(candles)
@@ -726,6 +819,21 @@ class AnalyzerService:
         sell_score += fvg_sell
         reasons.extend(fvg_reasons)
 
+        # ── VWAP (max +1 each side) ───────────────────────────────────────
+        vwap = self._compute_vwap(df)
+        if vwap > 0:
+            vwap_dist = (price - vwap) / vwap * 100
+            if vwap_dist > 0.02:
+                buy_score += 1; reasons.append(f"Acima do VWAP ({vwap:.5f})")
+            elif vwap_dist < -0.02:
+                sell_score += 1; reasons.append(f"Abaixo do VWAP ({vwap:.5f})")
+
+        # ── Fibonacci auto (max +2 each side) ────────────────────────────
+        fib_buy, fib_sell, fib_reasons, fib_level = self._detect_fibonacci(df)
+        buy_score  += fib_buy
+        sell_score += fib_sell
+        reasons.extend(fib_reasons)
+
         # ── Decision ─────────────────────────────────────────────────────────
         total = buy_score + sell_score or 1
         gap   = abs(buy_score - sell_score)
@@ -746,6 +854,8 @@ class AnalyzerService:
             result.patterns   = patterns
             result.divergences = divergences
             result.session    = session_name
+            result.vwap       = vwap
+            result.fib_level  = fib_level
             return result
 
         if (
@@ -764,6 +874,8 @@ class AnalyzerService:
             result.patterns   = patterns
             result.divergences = divergences
             result.session    = session_name
+            result.vwap       = vwap
+            result.fib_level  = fib_level
             return result
 
         conf = round(max(buy_score, sell_score) / total * 100, 1)
@@ -776,6 +888,8 @@ class AnalyzerService:
         wait.patterns   = patterns
         wait.divergences = divergences
         wait.session    = session_name
+        wait.vwap       = vwap
+        wait.fib_level  = fib_level
         return wait
 
     def trend_bias(self, candles: list[dict]) -> str:
