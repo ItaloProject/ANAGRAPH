@@ -1,0 +1,26 @@
+name: Keep Render Alive
+
+on:
+  schedule:
+    # Pinga o backend a cada 10 minutos (evita o sleep do free tier)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # permite rodar manualmente
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping ANAGRAPH API
+        run: |
+          echo "Pingando backend Render..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://anagraph-api.onrender.com/api/health \
+            --max-time 30)
+
+          echo "HTTP Status: $STATUS"
+
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Backend ONLINE"
+          else
+            echo "⚠️  Backend retornou $STATUS (pode estar acordando)"
+          fi
