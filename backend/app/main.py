@@ -115,6 +115,7 @@ class BotStartRequest(BaseModel):
     analyzer_min_gap: int = Field(default=2, ge=1, le=5)
     analyzer_min_adx: float = Field(default=22.0, ge=15.0, le=40.0)
     analyze_every: int = 15
+    session_mode: str = "london_ny"  # "all"|"london_ny"|"london"|"new_york"|"asian"
 
 
 def _enforce_conservative(req: BotStartRequest) -> BotStartRequest:
@@ -171,6 +172,7 @@ async def _launch_bot(req: BotStartRequest) -> dict:
         analyzer_min_gap=req.analyzer_min_gap,
         analyzer_min_adx=req.analyzer_min_adx,
         analyze_every=req.analyze_every,
+        session_mode=req.session_mode,
         on_signal=lambda d: _broadcast("signal", d),
         on_trade=lambda d: _broadcast("trade", d),
         on_tick=lambda d: _broadcast("tick", d),

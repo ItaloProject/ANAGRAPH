@@ -20,6 +20,7 @@ export interface BotConfig {
   analyzer_min_gap?: number
   analyzer_min_adx?: number
   analyze_every?: number
+  session_mode?: string
 }
 
 export const botApi = {

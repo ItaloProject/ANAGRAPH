@@ -42,6 +42,7 @@ class AnalyzerService:
     Multi-indicator confluence engine with trend, volatility, and MTF filters.
     Indicators: RSI + Stochastic + MACD + Bollinger Bands + EMA + ADX
     MTF: H4 macro trend → H1 confirmation → primary TF entry
+    session_mode: "london_ny" (default), "all" (24h), "london", "new_york", "asian"
     """
 
     def __init__(
@@ -49,10 +50,12 @@ class AnalyzerService:
         min_score: int = 5,
         min_score_gap: int = 2,
         min_adx: float = 22.0,
+        session_mode: str = "london_ny",
     ):
         self.min_score     = min_score
         self.min_score_gap = min_score_gap
         self.min_adx       = min_adx
+        self.session_mode  = session_mode
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -187,34 +190,57 @@ class AnalyzerService:
     def _session_filter(self, ts: int | None = None) -> tuple[bool, str]:
         """
         Returns (allowed, session_name).
-        Only allows trading during high-liquidity sessions (UTC):
-          - London:           07:00 – 16:00
-          - New York:         13:00 – 20:30
-          - London+NY (best): 13:00 – 16:00
-        Blocks Asian session (21:00 – 07:00) and last 30min of NY.
+        Behaviour is controlled by self.session_mode:
+          "all"      — opera 24h, sem restrição
+          "london_ny"— London 07:00–16:00 + NY 13:00–20:30 (default)
+          "london"   — apenas London 07:00–16:00
+          "new_york" — apenas New York 13:00–20:30
+          "asian"    — apenas Asian 21:00–07:00
         `ts` is a Unix timestamp; uses current time when None.
         """
+        if self.session_mode == "all":
+            dt   = datetime.fromtimestamp(ts, tz=timezone.utc) if ts else datetime.now(timezone.utc)
+            hour = dt.hour
+            minute = dt.minute
+            return True, f"24h (UTC {hour:02d}:{minute:02d})"
+
         dt      = datetime.fromtimestamp(ts, tz=timezone.utc) if ts else datetime.now(timezone.utc)
         hour    = dt.hour
         minute  = dt.minute
-        hm      = hour * 60 + minute  # minutes since midnight UTC
+        hm      = hour * 60 + minute
 
-        LONDON_OPEN  = 7  * 60        # 07:00
-        LONDON_CLOSE = 16 * 60        # 16:00
-        NY_OPEN      = 13 * 60        # 13:00
-        NY_CLOSE     = 20 * 60 + 30   # 20:30 (avoid last 30min)
+        LONDON_OPEN  = 7  * 60
+        LONDON_CLOSE = 16 * 60
+        NY_OPEN      = 13 * 60
+        NY_CLOSE     = 20 * 60 + 30
 
         in_london = LONDON_OPEN <= hm < LONDON_CLOSE
         in_ny     = NY_OPEN     <= hm < NY_CLOSE
+        # Asian = fora de London e NY (inclui noite e madrugada)
+        in_asian  = not in_london and not in_ny
 
+        if self.session_mode == "london":
+            if in_london:
+                return True, "London"
+            return False, f"Fora da sessão London (UTC {hour:02d}:{minute:02d})"
+
+        if self.session_mode == "new_york":
+            if in_ny:
+                return True, "New York"
+            return False, f"Fora da sessão New York (UTC {hour:02d}:{minute:02d})"
+
+        if self.session_mode == "asian":
+            if in_asian:
+                return True, f"Asian (UTC {hour:02d}:{minute:02d})"
+            return False, f"Fora da sessão Asiática (UTC {hour:02d}:{minute:02d})"
+
+        # default: london_ny
         if in_london and in_ny:
             return True, "London+NY (sessão premium)"
         if in_london:
             return True, "London"
         if in_ny:
             return True, "New York"
-
-        # Asian / off-hours
         return False, f"Sessão asiática/fora de horário (UTC {hour:02d}:{minute:02d})"
 
     def _market_structure(

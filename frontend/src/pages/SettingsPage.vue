@@ -144,6 +144,21 @@
               Mín. 15 min na DERIV — use M15 com 15 min
             </div>
           </div>
+
+          <div class="q-mb-sm">
+            <div class="row-label q-mb-xs">Horário de operação</div>
+            <q-btn-toggle v-model="config.session_mode"
+              :options="sessionModes"
+              toggle-color="cyan" color="transparent" text-color="grey-5"
+              unelevated dense />
+            <div class="text-caption q-mt-xs" :class="config.session_mode === 'all' ? 'text-neon-amber' : 'text-muted'">
+              <template v-if="config.session_mode === 'all'">⚠ 24h — opera em qualquer horário, inclusive sessão asiática</template>
+              <template v-else-if="config.session_mode === 'london_ny'">London 07–16 + New York 13–20:30 UTC (recomendado)</template>
+              <template v-else-if="config.session_mode === 'london'">Apenas London 07:00–16:00 UTC</template>
+              <template v-else-if="config.session_mode === 'new_york'">Apenas New York 13:00–20:30 UTC</template>
+              <template v-else-if="config.session_mode === 'asian'">Apenas Asian 21:00–07:00 UTC (baixa liquidez)</template>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -332,6 +347,14 @@ const durations = [
   { label: '15 min', value: 15 },
   { label: '30 min', value: 30 },
   { label: '60 min', value: 60 },
+]
+
+const sessionModes = [
+  { label: '24h',       value: 'all'      },
+  { label: 'London+NY', value: 'london_ny' },
+  { label: 'London',    value: 'london'   },
+  { label: 'New York',  value: 'new_york' },
+  { label: 'Asian',     value: 'asian'    },
 ]
 
 const indicators = ref([

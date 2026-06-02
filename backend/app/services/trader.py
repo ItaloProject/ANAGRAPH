@@ -101,6 +101,7 @@ class TradingBot:
         on_tick: Optional[Callable] = None,
         on_stats: Optional[Callable] = None,
         analyze_every: int = 3,
+        session_mode: str = "london_ny",
     ):
         self.api_token         = api_token
         self.app_id            = app_id
@@ -116,6 +117,7 @@ class TradingBot:
             min_score=analyzer_min_score,
             min_score_gap=analyzer_min_gap,
             min_adx=analyzer_min_adx,
+            session_mode=session_mode,
         )
         self.risk     = RiskManager(risk_config)
         self.adaptive = AdaptiveController(
