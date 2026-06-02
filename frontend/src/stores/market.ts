@@ -105,6 +105,10 @@ export const useMarketStore = defineStore('market', () => {
     wins.value = signals.value.filter(s => s.result === 'WIN').length
   }
 
+  function setActiveAsset(asset: string) {
+    if (asset) activeAsset.value = asset
+  }
+
   function applyTick(price: number, epoch: number) {
     previousPrice.value = currentPrice.value
     currentPrice.value  = parseFloat(price.toFixed(5))
@@ -174,6 +178,6 @@ export const useMarketStore = defineStore('market', () => {
     connected, activeAsset, currentPrice, previousPrice,
     candles, signals, accuracy, totalSignals, wins, priceChange,
     liveIndicators,
-    connect, simulateTick, addSignal, applyTick, updateIndicators,
+    connect, simulateTick, addSignal, applyTick, updateIndicators, setActiveAsset,
   }
 })

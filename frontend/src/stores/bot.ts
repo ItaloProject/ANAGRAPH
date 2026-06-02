@@ -159,7 +159,7 @@ export const useBotStore = defineStore('bot', () => {
     if (data.adaptive) adaptive.value = data.adaptive
     if (data.mtf) mtf.value = data.mtf
     if (data.current_price && data.current_price > 0) {
-      market.activeAsset.value = data.asset ?? market.activeAsset.value
+      if (data.asset) market.setActiveAsset(data.asset)
       market.applyTick(data.current_price, Math.floor(Date.now() / 1000))
     }
     lastSyncAt.value = new Date().toLocaleTimeString('pt-BR')
