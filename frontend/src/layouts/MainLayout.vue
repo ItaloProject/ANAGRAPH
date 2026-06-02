@@ -2,80 +2,65 @@
   <q-layout view="lHh Lpr lFf">
     <!-- Header -->
     <q-header elevated>
-      <q-toolbar style="min-height:56px;">
+      <q-toolbar style="min-height:52px; padding: 0 8px;">
         <q-btn flat round dense icon="menu" @click="drawer = !drawer" color="grey-5" />
 
-        <div class="row items-center q-ml-md gap-2">
+        <div class="row items-center q-ml-sm gap-2">
           <div class="logo-mark" />
-          <span class="text-weight-bold text-h6 tracking-widest text-neon-cyan">ANA</span>
-          <span class="text-weight-light text-h6 text-grey-5">GRAPH</span>
+          <span class="text-weight-bold tracking-widest text-neon-cyan logo-text">ANA</span>
+          <span class="text-weight-light text-grey-5 logo-text">GRAPH</span>
         </div>
 
         <q-space />
 
-        <!-- Bot / Demo + saldo DERIV -->
-        <div class="row items-center gap-2 q-mr-md">
+        <!-- Status bot (sempre visível) -->
+        <div class="row items-center gap-2 q-mr-sm">
           <div :class="['live-dot', botStore.running ? '' : 'dot-sim']" />
-          <span class="text-caption" :class="botStore.running ? 'text-neon-green' : 'text-neon-cyan'"
-            style="letter-spacing:1px;">
-            {{ botStore.running ? 'BOT ON' : (botStore.accountIsDemo ? 'DEMO' : 'REAL') }}
+          <span
+            class="text-caption text-weight-bold"
+            :class="botStore.running ? 'text-neon-green' : 'text-neon-cyan'"
+            style="letter-spacing:1px;"
+          >
+            {{ botStore.running ? 'ON' : (botStore.accountIsDemo ? 'DEMO' : 'REAL') }}
           </span>
         </div>
 
-        <!-- Saldo conta DERIV -->
+        <!-- Saldo (oculto em mobile xs) -->
         <div
           v-if="botStore.accountBalance !== null"
-          class="balance-chip q-mr-md"
+          class="balance-chip q-mr-sm gt-xs"
           :class="botStore.accountIsDemo ? 'chip-demo' : 'chip-real'"
         >
-          <q-icon name="account_balance_wallet" size="14px" />
-          <div class="balance-text">
-            <span v-if="botStore.accountBalanceBrl !== null" class="font-mono text-weight-bold">
-              {{ botStore.formatBrl(botStore.accountBalanceBrl) }}
-            </span>
-            <span class="text-caption text-muted q-ml-xs">conta USD</span>
-          </div>
-          <span v-if="botStore.accountLoginId" class="text-caption login-hint">
-            {{ botStore.accountLoginId }}
+          <q-icon name="account_balance_wallet" size="13px" />
+          <span class="font-mono text-weight-bold">
+            {{ botStore.formatBrl(botStore.accountBalanceBrl ?? 0) }}
           </span>
         </div>
-        <div v-else-if="botStore.accountLoadFailed" class="text-caption text-neon-amber q-mr-md">
-          Saldo indisponível
+        <div v-else-if="botStore.accountLoadFailed" class="text-caption text-neon-amber q-mr-sm gt-xs">
           <q-btn flat dense size="xs" icon="refresh" color="amber" @click="botStore.fetchAccountStatus()" />
         </div>
-        <div v-else-if="botStore.backendOnline" class="text-caption text-muted q-mr-md">
-          Carregando saldo...
-        </div>
 
-        <!-- Current asset price -->
-        <div class="row items-center gap-3 q-mr-lg" v-if="store.connected">
+        <!-- Preço ativo (oculto em mobile) -->
+        <div class="row items-center gap-2 q-mr-sm gt-sm" v-if="store.connected">
           <div class="text-right">
-            <div class="text-caption text-muted">{{ store.activeAsset }}</div>
-            <div class="text-subtitle2 text-neon-cyan font-mono">
+            <div class="text-caption text-muted" style="font-size:10px;">{{ store.activeAsset }}</div>
+            <div class="text-caption text-neon-cyan font-mono text-weight-bold">
               {{ store.currentPrice.toFixed(5) }}
             </div>
           </div>
           <q-badge
             :color="store.priceChange >= 0 ? 'positive' : 'negative'"
             :label="(store.priceChange >= 0 ? '+' : '') + store.priceChange.toFixed(4)"
-            rounded
+            dense rounded
           />
-        </div>
-
-        <!-- Account info -->
-        <div class="row items-center gap-2 q-mr-sm" v-if="authStore.isLoggedIn">
-          <div class="account-chip" :class="authStore.isDemo ? 'chip-demo' : 'chip-real'">
-            <q-icon :name="authStore.isDemo ? 'school' : 'account_balance'" size="12px" />
-            <span>{{ authStore.accountLabel }}</span>
-          </div>
         </div>
 
         <q-btn flat round icon="logout" color="grey-5" size="sm" @click="logout" title="Sair" />
       </q-toolbar>
     </q-header>
 
-    <!-- Drawer -->
-    <q-drawer v-model="drawer" show-if-above :width="220" :breakpoint="700">
+    <!-- Drawer: show-if-above no sm+, mobile fecha sozinho -->
+    <q-drawer v-model="drawer" show-if-above :width="210" :breakpoint="700">
       <q-scroll-area class="fit">
         <div class="q-pt-lg q-pb-md q-px-md">
           <div class="text-caption text-muted q-mb-md" style="letter-spacing:2px;">NAVIGATION</div>
@@ -230,8 +215,9 @@ onUnmounted(() => {
   }
 }
 .balance-chip {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 12px; border-radius: 10px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 10px;
+  font-size: 13px;
   &.chip-demo {
     background: rgba(0,255,136,0.08);
     border: 1px solid rgba(0,255,136,0.25);
@@ -241,13 +227,6 @@ onUnmounted(() => {
     background: rgba(255,184,0,0.08);
     border: 1px solid rgba(255,184,0,0.25);
     color: var(--accent-amber);
-  }
-  .balance-text { line-height: 1.1; }
-  .login-hint {
-    color: var(--text-muted);
-    font-size: 10px;
-    padding-left: 8px;
-    border-left: 1px solid rgba(255,255,255,0.1);
   }
 }
 .logo-mark {
@@ -264,6 +243,11 @@ onUnmounted(() => {
 .gap-3 { gap: 12px; }
 .text-muted { color: var(--text-muted); }
 .text-secondary { color: var(--text-secondary); }
+
+.logo-text {
+  font-size: 18px;
+  @media (max-width: 599px) { font-size: 15px; letter-spacing: 2px; }
+}
 
 .indicator-row {
   border-bottom: 1px solid rgba(255,255,255,0.04);

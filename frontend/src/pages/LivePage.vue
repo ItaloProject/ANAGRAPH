@@ -1,57 +1,137 @@
 <template>
-  <q-page class="live-page q-pa-md">
+  <q-page class="live-page">
 
-    <!-- ── Barra de status ── -->
-    <div class="live-status-bar q-mb-md">
-      <div class="row items-center justify-between">
-        <div class="row items-center q-gutter-md">
+    <!-- ── Ticker Bar ── -->
+    <div class="ticker-bar q-mb-md">
+
+      <!-- Linha 1: preço + sparkline + sessão + status -->
+      <div class="row items-center justify-between flex-wrap" style="gap:10px;">
+
+        <!-- Preço principal -->
+        <div class="row items-center" style="gap:14px;">
           <div class="row items-center gap-2">
-            <div :class="['status-dot', bot.running ? 'dot-green' : 'dot-red']" />
-            <span class="text-caption" :class="bot.running ? 'text-neon-green' : 'text-neon-red'">
-              {{ bot.running ? 'BOT ATIVO' : 'BOT PARADO' }}
+            <div :class="['ticker-dot', bot.running ? 'dot-green' : 'dot-red']" />
+            <span class="ticker-asset">{{ marketStore.activeAsset }}</span>
+          </div>
+
+          <div class="row items-center gap-2">
+            <span
+              class="ticker-price font-mono"
+              :class="marketStore.priceChange >= 0 ? 'text-neon-green' : 'text-neon-red'"
+            >
+              {{ marketStore.currentPrice.toFixed(5) }}
+            </span>
+            <span
+              class="ticker-change"
+              :class="marketStore.priceChange >= 0 ? 'text-neon-green' : 'text-neon-red'"
+            >
+              {{ marketStore.priceChange >= 0 ? '▲' : '▼' }}
+              {{ Math.abs(marketStore.priceChange * 10000).toFixed(1) }} pips
             </span>
           </div>
-          <div class="row items-center gap-2">
-            <div :class="['status-dot', bot.connected ? 'dot-green' : 'dot-amber']" />
-            <span class="text-caption text-muted">
-              {{ bot.connected ? 'Tempo real conectado' : 'Reconectando...' }}
-            </span>
+
+          <!-- Sparkline -->
+          <div class="sparkline-wrap gt-xs">
+            <svg :width="sparkW" :height="sparkH" :viewBox="`0 0 ${sparkW} ${sparkH}`" class="sparkline-svg">
+              <!-- Área de fundo -->
+              <defs>
+                <linearGradient :id="`sg`" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" :stop-color="sparklineColor" stop-opacity="0.25" />
+                  <stop offset="100%" :stop-color="sparklineColor" stop-opacity="0" />
+                </linearGradient>
+              </defs>
+              <path :d="sparklineArea" :fill="`url(#sg)`" />
+              <polyline
+                :points="sparklinePoints"
+                fill="none"
+                :stroke="sparklineColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <!-- Ponto atual -->
+              <circle :cx="sparkW" :cy="sparklineLastY" r="3" :fill="sparklineColor" />
+            </svg>
           </div>
-          <span v-if="bot.lastSyncAt" class="text-caption text-muted">
-            Sync {{ bot.lastSyncAt }}
-          </span>
         </div>
-        <div class="row items-center q-gutter-sm">
-          <q-badge color="positive" label="MODO PRECISÃO" />
-          <q-badge v-if="bot.running" color="cyan" :label="`${marketStore.activeAsset} · ${marketStore.currentPrice.toFixed(5)}`" />
-          <q-btn flat dense size="sm" icon="sync" color="cyan" label="Atualizar"
+
+        <!-- Direita: sessão + bot + sync + refresh -->
+        <div class="row items-center" style="gap:8px;">
+          <div v-if="marketStore.liveIndicators.session" class="session-pill" :class="sessionClass">
+            <q-icon name="schedule" size="11px" />
+            {{ marketStore.liveIndicators.session }}
+          </div>
+          <div class="row items-center gap-2">
+            <div :class="['ticker-dot', bot.connected ? 'dot-green' : 'dot-amber']" style="width:6px;height:6px;" />
+            <span class="text-caption" :class="bot.running ? 'text-neon-green' : 'text-muted'">
+              {{ bot.running ? 'LIVE' : 'OFF' }}
+            </span>
+          </div>
+          <span v-if="bot.lastSyncAt" class="text-caption text-muted gt-sm">{{ bot.lastSyncAt }}</span>
+          <q-btn flat round dense size="xs" icon="sync" color="cyan"
             @click="refreshLive" :loading="refreshing" />
         </div>
       </div>
+
+      <!-- Linha 2: indicadores rápidos -->
+      <div class="row items-center q-mt-sm" style="gap:6px; flex-wrap:wrap;">
+        <div class="indicator-pill">
+          <span class="text-muted">RSI</span>
+          <span :class="marketStore.liveIndicators.rsi < 30 ? 'text-neon-green' : marketStore.liveIndicators.rsi > 70 ? 'text-neon-red' : 'text-neon-cyan'">
+            {{ marketStore.liveIndicators.rsi.toFixed(1) }}
+          </span>
+        </div>
+        <div class="indicator-pill">
+          <span class="text-muted">MACD</span>
+          <span :class="marketStore.liveIndicators.macd > marketStore.liveIndicators.macd_signal ? 'text-neon-green' : 'text-neon-red'">
+            {{ marketStore.liveIndicators.macd > 0 ? '+' : '' }}{{ marketStore.liveIndicators.macd.toFixed(5) }}
+          </span>
+        </div>
+        <div class="indicator-pill">
+          <span class="text-muted">ADX</span>
+          <span :class="marketStore.liveIndicators.adx >= 22 ? 'text-neon-green' : 'text-neon-amber'">
+            {{ marketStore.liveIndicators.adx.toFixed(1) }}
+          </span>
+        </div>
+        <div class="indicator-pill" v-if="marketStore.liveIndicators.atr_ratio">
+          <span class="text-muted">ATR</span>
+          <span :class="atrClass">{{ marketStore.liveIndicators.atr_ratio.toFixed(2) }}×</span>
+        </div>
+        <div class="mtf-pill" :class="`bias-${(marketStore.liveIndicators.h1_bias || 'neutral').toLowerCase()}`">
+          <span class="mtf-label">H1</span>
+          <span class="mtf-val">{{ marketStore.liveIndicators.h1_bias || 'NEUTRAL' }}</span>
+        </div>
+        <div class="mtf-pill" :class="`bias-${(marketStore.liveIndicators.h4_bias || 'neutral').toLowerCase()}`">
+          <span class="mtf-label">H4</span>
+          <span class="mtf-val">{{ marketStore.liveIndicators.h4_bias || 'NEUTRAL' }}</span>
+        </div>
+        <div class="adaptive-pill q-ml-auto" :class="`regime-${bot.adaptive.regime}`">
+          <q-icon name="auto_fix_high" size="10px" />
+          {{ adaptiveLabel }}
+        </div>
+      </div>
+
     </div>
 
-    <!-- ── Topo: Saldo + Status ── -->
-    <div class="row q-gutter-md q-mb-md">
+    <!-- ── Stats cards ── -->
+    <div class="row q-col-gutter-md q-mb-md">
 
       <!-- Saldo do dia -->
-      <div class="col">
+      <div class="col-6 col-md">
         <div class="balance-card">
           <div class="balance-label">SALDO DO DIA</div>
-          <div
-            class="balance-value"
-            :class="bot.displayStatsBrl.pnl >= 0 ? 'text-neon-green' : 'text-neon-red'"
-          >
+          <div class="balance-value" :class="bot.displayStatsBrl.pnl >= 0 ? 'text-neon-green' : 'text-neon-red'">
             {{ bot.formatBrl(bot.displayStatsBrl.pnl, true) }}
           </div>
           <div class="balance-sub text-muted">
-            {{ bot.displayStatsBrl.wins }}W / {{ bot.displayStatsBrl.losses }}L &nbsp;·&nbsp;
-            {{ bot.displayStatsBrl.accuracy }}% acurácia
+            {{ bot.displayStatsBrl.wins }}W / {{ bot.displayStatsBrl.losses }}L
+            · {{ bot.displayStatsBrl.accuracy }}%
           </div>
         </div>
       </div>
 
-      <!-- Wins hoje -->
-      <div class="col">
+      <!-- Wins -->
+      <div class="col-6 col-md">
         <div class="balance-card border-glow-green">
           <div class="balance-label">WINS</div>
           <div class="balance-value text-neon-green">{{ bot.displayStatsBrl.wins }}</div>
@@ -59,8 +139,8 @@
         </div>
       </div>
 
-      <!-- Losses hoje -->
-      <div class="col">
+      <!-- Losses -->
+      <div class="col-6 col-md">
         <div class="balance-card border-glow-red">
           <div class="balance-label">LOSSES</div>
           <div class="balance-value text-neon-red">{{ bot.displayStatsBrl.losses }}</div>
@@ -68,20 +148,17 @@
         </div>
       </div>
 
-      <!-- Limite do dia -->
-      <div class="col">
+      <!-- Limite diário -->
+      <div class="col-6 col-md">
         <div class="balance-card">
           <div class="balance-label">LIMITE DIÁRIO</div>
           <div class="balance-value text-neon-cyan">{{ bot.displayStatsBrl.daily_limit_used }}%</div>
-          <div class="balance-sub text-muted">usado do limite em R$</div>
+          <div class="balance-sub text-muted">usado</div>
           <div class="limit-bar q-mt-xs">
-            <div
-              class="limit-fill"
-              :style="{
-                width: bot.displayStatsBrl.daily_limit_used + '%',
-                background: bot.displayStatsBrl.daily_limit_used > 70 ? 'var(--accent-red)' : 'var(--accent-cyan)'
-              }"
-            />
+            <div class="limit-fill" :style="{
+              width: bot.displayStatsBrl.daily_limit_used + '%',
+              background: bot.displayStatsBrl.daily_limit_used > 70 ? 'var(--accent-red)' : 'var(--accent-cyan)'
+            }" />
           </div>
         </div>
       </div>
@@ -100,72 +177,40 @@
           @click="forceAnalyze" :loading="analyzing" />
       </div>
 
-      <!-- Linha 1: Sinal + Scores + Indicadores -->
-      <div class="row q-gutter-sm q-mb-xs">
-        <!-- Sinal atual -->
+      <!-- Sinal + Scores + Confiança -->
+      <div class="row items-center q-gutter-sm q-mb-xs">
         <div class="analysis-chip" :class="`chip-${marketStore.liveIndicators.last_signal.toLowerCase()}`">
           <q-icon
             :name="marketStore.liveIndicators.last_signal === 'BUY' ? 'trending_up' :
                    marketStore.liveIndicators.last_signal === 'SELL' ? 'trending_down' : 'pause'"
-            size="14px"
+            size="16px"
           />
-          <span class="text-weight-bold">{{ directionLabel(marketStore.liveIndicators.last_signal) }}</span>
+          <span class="text-weight-bold" style="font-size:13px;">{{ directionLabel(marketStore.liveIndicators.last_signal) }}</span>
           <span class="text-caption">{{ marketStore.liveIndicators.last_confidence }}%</span>
         </div>
 
-        <!-- Scores -->
+        <!-- Barra de confiança -->
+        <div class="confidence-bar-wrap">
+          <div class="confidence-bar">
+            <div
+              class="confidence-fill"
+              :style="{
+                width: marketStore.liveIndicators.last_confidence + '%',
+                background: marketStore.liveIndicators.last_confidence >= 80 ? 'var(--accent-green)' :
+                            marketStore.liveIndicators.last_confidence >= 60 ? 'var(--accent-cyan)' : 'var(--accent-amber)'
+              }"
+            />
+          </div>
+          <span class="text-caption text-muted">{{ marketStore.liveIndicators.last_confidence }}% confiança</span>
+        </div>
+
+        <!-- Scores buy vs sell -->
         <div class="score-pill score-buy">↑ {{ marketStore.liveIndicators.buy_score }}</div>
         <div class="score-pill score-sell">↓ {{ marketStore.liveIndicators.sell_score }}</div>
 
-        <!-- Indicadores -->
-        <div class="indicator-pill">
-          <span class="text-muted">RSI</span>
-          <span :class="marketStore.liveIndicators.rsi < 30 ? 'text-neon-green' :
-                         marketStore.liveIndicators.rsi > 70 ? 'text-neon-red' : 'text-neon-cyan'">
-            {{ marketStore.liveIndicators.rsi.toFixed(1) }}
-          </span>
-        </div>
-        <div class="indicator-pill">
-          <span class="text-muted">MACD</span>
-          <span :class="marketStore.liveIndicators.macd > marketStore.liveIndicators.macd_signal ? 'text-neon-green' : 'text-neon-red'">
-            {{ marketStore.liveIndicators.macd > 0 ? '+' : '' }}{{ marketStore.liveIndicators.macd.toFixed(5) }}
-          </span>
-        </div>
-        <div class="indicator-pill">
-          <span class="text-muted">ADX</span>
-          <span :class="marketStore.liveIndicators.adx >= 22 ? 'text-neon-green' : 'text-neon-amber'">
-            {{ marketStore.liveIndicators.adx.toFixed(1) }}
-          </span>
-        </div>
-        <div class="indicator-pill" v-if="marketStore.liveIndicators.atr_ratio">
-          <span class="text-muted">ATR</span>
-          <span :class="atrClass">{{ marketStore.liveIndicators.atr_ratio.toFixed(1) }}×</span>
-        </div>
-      </div>
-
-      <!-- Linha 2: Sessão + MTF H1/H4 + Regime Adaptativo -->
-      <div class="row q-gutter-sm q-mb-xs">
-        <!-- Sessão de mercado -->
-        <div v-if="marketStore.liveIndicators.session" class="session-pill" :class="sessionClass">
-          <q-icon name="schedule" size="11px" />
-          {{ marketStore.liveIndicators.session }}
-        </div>
-
-        <!-- H1 bias -->
-        <div class="mtf-pill" :class="`bias-${(marketStore.liveIndicators.h1_bias || 'NEUTRAL').toLowerCase()}`">
-          <span class="mtf-label">H1</span>
-          <span class="mtf-val">{{ marketStore.liveIndicators.h1_bias || 'NEUTRAL' }}</span>
-        </div>
-
-        <!-- H4 bias -->
-        <div class="mtf-pill" :class="`bias-${(marketStore.liveIndicators.h4_bias || 'NEUTRAL').toLowerCase()}`">
-          <span class="mtf-label">H4</span>
-          <span class="mtf-val">{{ marketStore.liveIndicators.h4_bias || 'NEUTRAL' }}</span>
-        </div>
-
-        <!-- Regime adaptativo -->
-        <div class="adaptive-pill" :class="`regime-${bot.adaptive.regime}`">
-          <q-icon name="auto_fix_high" size="11px" />
+        <!-- Min confiança adaptativo -->
+        <div class="adaptive-pill q-ml-auto" :class="`regime-${bot.adaptive.regime}`">
+          <q-icon name="auto_fix_high" size="10px" />
           {{ adaptiveLabel }} · {{ bot.adaptive.min_confidence }}%
           <span v-if="bot.adaptive.window_trades >= 5" class="text-caption q-ml-xs">
             (WR {{ bot.adaptive.win_rate_window }}%)
@@ -387,6 +432,59 @@ const marketStore = useMarketStore()
 const analyzing   = ref(false)
 const refreshing  = ref(false)
 
+// ── Sparkline ──────────────────────────────────────────────────────────────
+const sparkW = 120
+const sparkH = 32
+
+const sparklinePoints = computed(() => {
+  const src = marketStore.candles.slice(-80)
+  if (src.length < 2) return `0,${sparkH / 2} ${sparkW},${sparkH / 2}`
+  const prices = src.map(c => c.close)
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  const range = max - min || 0.00001
+  const pad = 3
+  return prices.map((p, i) => {
+    const x = (i / (prices.length - 1)) * sparkW
+    const y = sparkH - pad - ((p - min) / range) * (sparkH - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+})
+
+const sparklineArea = computed(() => {
+  const src = marketStore.candles.slice(-80)
+  if (src.length < 2) return ''
+  const prices = src.map(c => c.close)
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  const range = max - min || 0.00001
+  const pad = 3
+  const pts = prices.map((p, i) => {
+    const x = (i / (prices.length - 1)) * sparkW
+    const y = sparkH - pad - ((p - min) / range) * (sparkH - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  return `M ${pts[0]} L ${pts.slice(1).join(' L ')} L ${sparkW},${sparkH} L 0,${sparkH} Z`
+})
+
+const sparklineLastY = computed(() => {
+  const src = marketStore.candles.slice(-80)
+  if (src.length < 2) return sparkH / 2
+  const prices = src.map(c => c.close)
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  const range = max - min || 0.00001
+  const pad = 3
+  const last = prices[prices.length - 1]
+  return sparkH - pad - ((last - min) / range) * (sparkH - pad * 2)
+})
+
+const sparklineColor = computed(() => {
+  const src = marketStore.candles.slice(-80)
+  if (src.length < 2) return '#00D4FF'
+  return src[src.length - 1].close >= src[0].close ? '#00FF88' : '#FF4466'
+})
+
 async function refreshLive() {
   refreshing.value = true
   try {
@@ -585,20 +683,63 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.live-page { background: var(--bg-deep); min-height: 100vh; }
+.live-page {
+  background: var(--bg-deep);
+  min-height: 100vh;
+  padding: 24px;
+  @media (max-width: 1023px) { padding: 16px; }
+  @media (max-width: 599px)  { padding: 10px; }
+}
 
-.live-status-bar {
+// ── Ticker bar ───────────────────────────────────────────────────────────────
+.ticker-bar {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 10px 16px;
+  border-radius: 14px;
+  padding: 14px 18px;
+
+  @media (max-width: 599px) { padding: 10px 12px; }
 }
-.status-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  &.dot-green { background: var(--accent-green); box-shadow: var(--glow-green); animation: pulse-green 2s ease-in-out infinite; }
-  &.dot-red   { background: var(--accent-red); }
-  &.dot-amber { background: var(--accent-amber); animation: pulse-cyan 2s ease-in-out infinite; }
+
+.ticker-dot {
+  border-radius: 50%;
+  &.dot-green { width: 8px; height: 8px; background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); animation: pulse-green 2s ease-in-out infinite; }
+  &.dot-red   { width: 8px; height: 8px; background: var(--accent-red); }
+  &.dot-amber { width: 8px; height: 8px; background: var(--accent-amber); animation: pulse-cyan 2s ease-in-out infinite; }
 }
+
+.ticker-asset {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--text-secondary);
+}
+
+.ticker-price {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.5px;
+
+  @media (max-width: 599px) { font-size: 20px; }
+}
+
+.ticker-change {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.sparkline-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.sparkline-svg {
+  display: block;
+  border-radius: 4px;
+}
+
 .gap-2 { gap: 8px; }
 
 // ── Balance cards ──
@@ -607,12 +748,23 @@ onUnmounted(() => {
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   padding: 16px 20px;
+  height: 100%;
   transition: border-color 0.3s;
   &:hover { border-color: var(--border-glow); }
+
+  @media (max-width: 599px) { padding: 12px 14px; border-radius: 10px; }
 }
-.balance-label { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--text-muted); margin-bottom: 6px; }
-.balance-value { font-size: 32px; font-weight: 700; line-height: 1; font-family: 'Roboto Mono', monospace; }
-.balance-sub   { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.balance-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-muted); margin-bottom: 6px;
+  @media (max-width: 599px) { letter-spacing: 1px; }
+}
+.balance-value {
+  font-size: 28px; font-weight: 700; line-height: 1;
+  font-family: 'Roboto Mono', monospace;
+  @media (max-width: 599px) { font-size: 20px; }
+}
+.balance-sub   { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 .limit-bar     { height: 3px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
 .limit-fill    { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
 
@@ -735,6 +887,27 @@ onUnmounted(() => {
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   padding: 14px 18px;
+  @media (max-width: 599px) { padding: 12px; }
+}
+
+.confidence-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 100px;
+  max-width: 160px;
+  flex: 1;
+}
+.confidence-bar {
+  height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.confidence-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s ease;
 }
 .analysis-chip {
   display: inline-flex; align-items: center; gap: 6px;

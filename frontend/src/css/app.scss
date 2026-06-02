@@ -198,6 +198,23 @@ html, body, #q-app {
     font-size: 40px;
     opacity: 0.08;
   }
+
+  // Tablet
+  @media (max-width: 1023px) {
+    padding: 16px 18px;
+    .stat-value { font-size: 24px; }
+    .stat-icon  { font-size: 32px; right: 14px; }
+  }
+
+  // Mobile
+  @media (max-width: 599px) {
+    padding: 14px 16px;
+    border-radius: 12px;
+    .stat-value { font-size: 22px; }
+    .stat-label { font-size: 10px; letter-spacing: 1px; }
+    .stat-icon  { font-size: 28px; right: 12px; }
+    &:hover { transform: none; } // desativa hover lift no touch
+  }
 }
 
 // ─── Chart Container ──────────────────────────────────────────────────────────

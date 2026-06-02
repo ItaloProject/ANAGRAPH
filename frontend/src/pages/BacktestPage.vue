@@ -1,125 +1,161 @@
 <template>
-  <q-page class="backtest-page q-pa-lg">
+  <q-page class="backtest-page">
 
-    <!-- Cabeçalho -->
-    <div class="row items-center justify-between q-mb-lg">
+    <!-- ── Toolbar ── -->
+    <div class="bt-toolbar">
       <div>
-        <h5 class="q-ma-none text-neon-cyan" style="letter-spacing:2px;">BACKTEST</h5>
+        <div class="text-weight-bold text-neon-cyan" style="font-size:18px;letter-spacing:3px;">BACKTEST</div>
         <div class="text-caption text-muted">Simulação walk-forward em histórico real da Deriv</div>
       </div>
       <q-btn
-        unelevated color="cyan" text-color="black" icon="play_arrow" label="Rodar Backtest"
-        :loading="running" @click="runBacktest"
+        unelevated :color="running ? 'grey-8' : 'cyan'" text-color="black"
+        :icon="running ? 'hourglass_empty' : 'play_arrow'"
+        :label="running ? `Analisando ${params.count} candles...` : 'Rodar Backtest'"
+        :loading="running"
+        @click="runBacktest"
         style="font-weight:700;letter-spacing:1px;"
       />
     </div>
 
-    <div class="row q-gutter-lg">
+    <div class="bt-body">
 
-      <!-- ── Painel de parâmetros ── -->
-      <div class="col-12 col-md-3">
-        <div class="glass-card q-pa-lg">
-          <div class="param-title q-mb-md">PARÂMETROS</div>
+      <!-- ── Parâmetros (lateral no desktop, accordion no mobile) ── -->
+      <div class="bt-params-col">
+        <div class="params-card">
+          <div class="params-title">PARÂMETROS</div>
 
-          <div class="param-row">
-            <span class="param-label">Candles históricos</span>
-            <q-slider v-model="params.count" :min="100" :max="1000" :step="50"
-              color="cyan" label :label-value="params.count" dark />
-          </div>
-          <div class="param-row">
-            <span class="param-label">Confiança mín. (%)</span>
-            <q-slider v-model="params.min_confidence" :min="60" :max="95" :step="1"
-              color="cyan" label :label-value="params.min_confidence + '%'" dark />
-          </div>
-          <div class="param-row">
-            <span class="param-label">Score mín.</span>
-            <q-slider v-model="params.min_score" :min="3" :max="9" :step="1"
-              color="cyan" label :label-value="params.min_score" dark />
-          </div>
-          <div class="param-row">
-            <span class="param-label">ADX mín.</span>
-            <q-slider v-model="params.min_adx" :min="15" :max="35" :step="1"
-              color="cyan" label :label-value="params.min_adx" dark />
-          </div>
-          <div class="param-row">
-            <span class="param-label">Stake (USD)</span>
-            <q-slider v-model="params.stake" :min="1" :max="50" :step="1"
-              color="cyan" label :label-value="'$' + params.stake" dark />
+          <div class="param-block">
+            <div class="param-row-label">
+              <span>Candles históricos</span>
+              <span class="param-val text-neon-cyan">{{ params.count }}</span>
+            </div>
+            <q-slider v-model="params.count" :min="100" :max="1000" :step="50" color="cyan" dark />
           </div>
 
-          <q-separator class="q-my-md" />
-          <div class="text-caption text-muted q-mb-xs">Granularidade</div>
+          <div class="param-block">
+            <div class="param-row-label">
+              <span>Confiança mín.</span>
+              <span class="param-val text-neon-cyan">{{ params.min_confidence }}%</span>
+            </div>
+            <q-slider v-model="params.min_confidence" :min="60" :max="95" :step="1" color="cyan" dark />
+          </div>
+
+          <div class="param-block">
+            <div class="param-row-label">
+              <span>Score mín.</span>
+              <span class="param-val text-neon-cyan">{{ params.min_score }}</span>
+            </div>
+            <q-slider v-model="params.min_score" :min="3" :max="9" :step="1" color="cyan" dark />
+          </div>
+
+          <div class="param-block">
+            <div class="param-row-label">
+              <span>ADX mín.</span>
+              <span class="param-val text-neon-cyan">{{ params.min_adx }}</span>
+            </div>
+            <q-slider v-model="params.min_adx" :min="15" :max="35" :step="1" color="cyan" dark />
+          </div>
+
+          <div class="param-block">
+            <div class="param-row-label">
+              <span>Stake (USD)</span>
+              <span class="param-val text-neon-cyan">${{ params.stake }}</span>
+            </div>
+            <q-slider v-model="params.stake" :min="1" :max="50" :step="1" color="cyan" dark />
+          </div>
+
+          <q-separator dark class="q-my-md" />
+
+          <div class="param-row-label q-mb-xs">
+            <span class="text-muted" style="font-size:10px;letter-spacing:1px;">GRANULARIDADE</span>
+          </div>
           <q-btn-toggle
             v-model="params.granularity"
             toggle-color="cyan" color="transparent" text-color="grey-6"
             dense unelevated
-            :options="[
-              {label:'M15',value:900},
-              {label:'H1', value:3600},
-            ]"
+            :options="[{label:'M15',value:900},{label:'H1',value:3600}]"
           />
+
+          <!-- Dica -->
+          <div class="param-hint q-mt-md">
+            <q-icon name="info_outline" size="13px" />
+            O backtest simula cada candle com o engine completo — mesmo critério do bot ao vivo.
+          </div>
         </div>
       </div>
 
-      <!-- ── Resultados ── -->
-      <div class="col">
-
-        <!-- Cards de métricas -->
-        <div class="row q-gutter-md q-mb-md" v-if="result">
-          <div class="col">
-            <div class="metric-card" :class="result.win_rate >= 55 ? 'card-green' : result.win_rate >= 45 ? 'card-amber' : 'card-red'">
-              <div class="metric-label">WIN RATE</div>
-              <div class="metric-value">{{ result.win_rate }}%</div>
-              <div class="metric-sub">{{ result.wins }}W / {{ result.losses }}L</div>
-            </div>
-          </div>
-          <div class="col">
-            <div class="metric-card" :class="result.pnl >= 0 ? 'card-green' : 'card-red'">
-              <div class="metric-label">P&L SIMULADO</div>
-              <div class="metric-value">${{ result.pnl.toFixed(2) }}</div>
-              <div class="metric-sub">{{ result.total_trades }} trades executados</div>
-            </div>
-          </div>
-          <div class="col">
-            <div class="metric-card">
-              <div class="metric-label">MAX DRAWDOWN</div>
-              <div class="metric-value text-neon-red">${{ result.max_drawdown.toFixed(2) }}</div>
-              <div class="metric-sub">Profit Factor: {{ result.profit_factor }}</div>
-            </div>
-          </div>
-          <div class="col">
-            <div class="metric-card">
-              <div class="metric-label">CONF. MÉDIA</div>
-              <div class="metric-value text-neon-cyan">{{ result.avg_confidence }}%</div>
-              <div class="metric-sub">Sharpe: {{ result.sharpe }}</div>
-            </div>
-          </div>
-          <div class="col">
-            <div class="metric-card">
-              <div class="metric-label">SINAIS GERADOS</div>
-              <div class="metric-value text-neon-purple">{{ result.total_signals }}</div>
-              <div class="metric-sub">filtrados: {{ result.total_signals - result.total_trades }}</div>
-            </div>
-          </div>
-        </div>
+      <!-- ── Área de resultados ── -->
+      <div class="bt-results-col">
 
         <!-- Estado vazio -->
-        <div v-if="!result && !running" class="empty-state">
-          <q-icon name="query_stats" size="64px" style="color:var(--text-muted);opacity:0.3;" />
-          <div class="text-subtitle1 text-muted q-mt-md">Ajuste os parâmetros e clique em Rodar Backtest</div>
-          <div class="text-caption text-muted q-mt-xs">O backtest usa histórico real da Deriv (walk-forward)</div>
+        <div v-if="!result && !running" class="bt-empty">
+          <q-icon name="query_stats" size="56px" style="opacity:.2;" />
+          <div class="text-muted q-mt-md" style="font-size:15px;">Configure os parâmetros e clique em Rodar</div>
+          <div class="text-caption text-muted q-mt-xs">Histórico real da Deriv via walk-forward</div>
         </div>
 
         <!-- Loading -->
-        <div v-if="running" class="empty-state">
-          <q-spinner-grid color="cyan" size="48px" />
-          <div class="text-subtitle1 text-neon-cyan q-mt-md">Analisando {{ params.count }} candles...</div>
-          <div class="text-caption text-muted q-mt-xs">Simulando cada candle com o engine completo</div>
+        <div v-else-if="running" class="bt-empty">
+          <q-spinner-grid color="cyan" size="52px" />
+          <div class="text-neon-cyan q-mt-md" style="font-size:15px;font-weight:700;">
+            Analisando {{ params.count }} candles...
+          </div>
+          <div class="text-caption text-muted q-mt-xs">Simulando confluência de indicadores em cada vela</div>
         </div>
 
-        <!-- Curva de Equity -->
-        <div v-if="result && result.equity_curve.length" class="glass-card q-mb-md">
-          <div class="chart-header">
+        <!-- Métricas: 2-por-linha mobile / 5 em linha desktop -->
+        <div v-if="result" class="row q-col-gutter-md q-mb-md">
+
+          <div class="col-6 col-sm-4 col-md">
+            <div class="metric-card" :class="result.win_rate >= 55 ? 'mc-green' : result.win_rate >= 45 ? 'mc-amber' : 'mc-red'">
+              <div class="mc-label">WIN RATE</div>
+              <div class="mc-val">{{ result.win_rate }}%</div>
+              <div class="mc-sub">{{ result.wins }}W / {{ result.losses }}L</div>
+              <div class="mc-bar-wrap">
+                <div class="mc-bar" :style="{
+                  width: result.win_rate + '%',
+                  background: result.win_rate >= 55 ? 'var(--accent-green)' : result.win_rate >= 45 ? 'var(--accent-amber)' : 'var(--accent-red)'
+                }" />
+              </div>
+            </div>
+          </div>
+
+          <div class="col-6 col-sm-4 col-md">
+            <div class="metric-card" :class="result.pnl >= 0 ? 'mc-green' : 'mc-red'">
+              <div class="mc-label">P&L SIMULADO</div>
+              <div class="mc-val font-mono">${{ result.pnl.toFixed(2) }}</div>
+              <div class="mc-sub">{{ result.total_trades }} trades</div>
+            </div>
+          </div>
+
+          <div class="col-6 col-sm-4 col-md">
+            <div class="metric-card mc-red-soft">
+              <div class="mc-label">MAX DRAWDOWN</div>
+              <div class="mc-val font-mono text-neon-red">${{ result.max_drawdown.toFixed(2) }}</div>
+              <div class="mc-sub">Profit factor: {{ result.profit_factor }}</div>
+            </div>
+          </div>
+
+          <div class="col-6 col-sm-4 col-md">
+            <div class="metric-card">
+              <div class="mc-label">CONF. MÉDIA</div>
+              <div class="mc-val text-neon-cyan">{{ result.avg_confidence }}%</div>
+              <div class="mc-sub">Sharpe: {{ result.sharpe }}</div>
+            </div>
+          </div>
+
+          <div class="col-6 col-sm-4 col-md">
+            <div class="metric-card">
+              <div class="mc-label">SINAIS</div>
+              <div class="mc-val text-neon-purple">{{ result.total_signals }}</div>
+              <div class="mc-sub">filtrados: {{ result.total_signals - result.total_trades }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Curva de equity -->
+        <div v-if="result && result.equity_curve.length" class="equity-card q-mb-md">
+          <div class="equity-header">
             <span class="text-caption text-secondary" style="letter-spacing:1.5px;">CURVA DE EQUITY</span>
             <q-badge
               :color="result.pnl >= 0 ? 'positive' : 'negative'"
@@ -130,63 +166,64 @@
           <div ref="equityChartEl" style="height:200px;" />
         </div>
 
-        <!-- Breakdown por Sessão + Sinal -->
-        <div v-if="result" class="row q-gutter-md q-mb-md">
+        <!-- Breakdown: sessão + direção + padrão -->
+        <div v-if="result" class="row q-col-gutter-md">
 
-          <!-- Por Sessão -->
           <div class="col-12 col-md-6">
-            <div class="glass-card q-pa-md">
-              <div class="param-title q-mb-sm">POR SESSÃO</div>
-              <div v-if="Object.keys(result.by_session).length === 0" class="text-caption text-muted">
-                Nenhum dado por sessão
-              </div>
-              <div v-for="(data, sess) in result.by_session" :key="sess" class="session-row">
-                <div class="session-name">{{ sess }}</div>
-                <div class="session-bar-wrap">
-                  <div class="session-bar-fill" :style="{width: data.win_rate + '%', background: data.win_rate >= 55 ? 'var(--accent-green)' : data.win_rate >= 45 ? 'var(--accent-amber)' : 'var(--accent-red)'}"/>
+            <div class="breakdown-card">
+              <div class="bd-title">POR SESSÃO</div>
+              <div v-if="!Object.keys(result.by_session).length" class="text-caption text-muted q-pa-sm">Sem dados</div>
+              <div v-for="(data, sess) in result.by_session" :key="sess" class="bd-row">
+                <span class="bd-name">{{ sess }}</span>
+                <div class="bd-bar-wrap">
+                  <div class="bd-bar-fill" :style="{
+                    width: data.win_rate + '%',
+                    background: data.win_rate >= 55 ? 'var(--accent-green)' : data.win_rate >= 45 ? 'var(--accent-amber)' : 'var(--accent-red)'
+                  }" />
                 </div>
-                <div class="session-stats">
-                  <span :class="data.win_rate >= 55 ? 'text-neon-green' : data.win_rate >= 45 ? 'text-neon-amber' : 'text-neon-red'">
-                    {{ data.win_rate }}%
-                  </span>
-                  <span class="text-muted"> · {{ data.trades }}t</span>
-                </div>
+                <span class="bd-stat" :class="data.win_rate >= 55 ? 'text-neon-green' : data.win_rate >= 45 ? 'text-neon-amber' : 'text-neon-red'">
+                  {{ data.win_rate }}%
+                </span>
+                <span class="bd-trades text-muted">{{ data.trades }}t</span>
               </div>
             </div>
           </div>
 
-          <!-- Por Sinal -->
           <div class="col-12 col-md-6">
-            <div class="glass-card q-pa-md">
-              <div class="param-title q-mb-sm">POR DIREÇÃO</div>
-              <div v-for="(data, sig) in result.by_signal" :key="sig" class="session-row">
-                <div class="session-name">
+            <div class="breakdown-card">
+              <div class="bd-title">POR DIREÇÃO</div>
+              <div v-for="(data, sig) in result.by_signal" :key="sig" class="bd-row">
+                <span class="bd-name row items-center gap-1">
                   <q-icon :name="sig === 'BUY' ? 'trending_up' : 'trending_down'"
-                    :color="sig === 'BUY' ? 'positive' : 'negative'" size="14px" />
+                    :color="sig === 'BUY' ? 'positive' : 'negative'" size="13px" />
                   {{ sig === 'BUY' ? 'SOBE' : 'DESCE' }}
+                </span>
+                <div class="bd-bar-wrap">
+                  <div class="bd-bar-fill" :style="{
+                    width: data.win_rate + '%',
+                    background: data.win_rate >= 55 ? 'var(--accent-green)' : 'var(--accent-red)'
+                  }" />
                 </div>
-                <div class="session-bar-wrap">
-                  <div class="session-bar-fill" :style="{width: data.win_rate + '%', background: data.win_rate >= 55 ? 'var(--accent-green)' : data.win_rate >= 45 ? 'var(--accent-amber)' : 'var(--accent-red)'}"/>
-                </div>
-                <div class="session-stats">
-                  <span :class="data.win_rate >= 55 ? 'text-neon-green' : data.win_rate >= 45 ? 'text-neon-amber' : 'text-neon-red'">
-                    {{ data.win_rate }}%
-                  </span>
-                  <span class="text-muted"> · {{ data.trades }}t · ${{ data.pnl.toFixed(2) }}</span>
-                </div>
+                <span class="bd-stat" :class="data.win_rate >= 55 ? 'text-neon-green' : 'text-neon-red'">
+                  {{ data.win_rate }}%
+                </span>
+                <span class="bd-trades text-muted">${{ data.pnl.toFixed(1) }}</span>
               </div>
 
               <template v-if="Object.keys(result.by_pattern).length">
-                <div class="param-title q-mt-md q-mb-sm">POR PADRÃO</div>
-                <div v-for="(data, pat) in result.by_pattern" :key="pat" class="session-row">
-                  <div class="session-name" style="font-size:11px;">{{ pat }}</div>
-                  <div class="session-bar-wrap">
-                    <div class="session-bar-fill" :style="{width: data.win_rate + '%', background: data.win_rate >= 55 ? 'var(--accent-green)' : 'var(--accent-red)'}"/>
+                <div class="bd-title q-mt-md">POR PADRÃO</div>
+                <div v-for="(data, pat) in result.by_pattern" :key="pat" class="bd-row">
+                  <span class="bd-name" style="font-size:11px;">{{ pat }}</span>
+                  <div class="bd-bar-wrap">
+                    <div class="bd-bar-fill" :style="{
+                      width: data.win_rate + '%',
+                      background: data.win_rate >= 55 ? 'var(--accent-green)' : 'var(--accent-red)'
+                    }" />
                   </div>
-                  <div class="session-stats">
-                    <span :class="data.win_rate >= 55 ? 'text-neon-green' : 'text-neon-red'">{{ data.win_rate }}%</span>
-                    <span class="text-muted"> · {{ data.trades }}t</span>
-                  </div>
+                  <span class="bd-stat" :class="data.win_rate >= 55 ? 'text-neon-green' : 'text-neon-red'">
+                    {{ data.win_rate }}%
+                  </span>
+                  <span class="bd-trades text-muted">{{ data.trades }}t</span>
                 </div>
               </template>
             </div>
@@ -247,11 +284,11 @@ function renderEquityChart() {
       textColor: '#8A9BBE',
     },
     grid: {
-      vertLines: { color: 'rgba(0,212,255,0.05)' },
-      horzLines: { color: 'rgba(0,212,255,0.05)' },
+      vertLines: { color: 'rgba(0,212,255,0.04)' },
+      horzLines: { color: 'rgba(0,212,255,0.04)' },
     },
-    rightPriceScale: { borderColor: 'rgba(0,212,255,0.1)' },
-    timeScale:       { borderColor: 'rgba(0,212,255,0.1)', timeVisible: false },
+    rightPriceScale: { borderColor: 'rgba(0,212,255,0.08)' },
+    timeScale:       { borderColor: 'rgba(0,212,255,0.08)', timeVisible: false },
     crosshair: {
       vertLine: { color: 'rgba(0,212,255,0.4)', style: LineStyle.Dashed },
       horzLine: { color: 'rgba(0,212,255,0.4)', style: LineStyle.Dashed },
@@ -260,19 +297,15 @@ function renderEquityChart() {
 
   const areaSeries = equityChart.addAreaSeries({
     lineColor:        result.value.pnl >= 0 ? '#00FF88' : '#FF4466',
-    topColor:         result.value.pnl >= 0 ? 'rgba(0,255,136,0.25)' : 'rgba(255,68,102,0.25)',
+    topColor:         result.value.pnl >= 0 ? 'rgba(0,255,136,0.2)' : 'rgba(255,68,102,0.2)',
     bottomColor:      'rgba(0,0,0,0)',
     lineWidth:        2,
     priceLineVisible: false,
   })
 
-  // Map equity curve: use trade index as "time" (integer sequence)
-  const data = result.value.equity_curve.map((p: any, i: number) => ({
-    time: i + 1,
-    value: p.equity,
-  }))
-
-  areaSeries.setData(data)
+  areaSeries.setData(
+    result.value.equity_curve.map((p: any, i: number) => ({ time: i + 1, value: p.equity }))
+  )
   equityChart.timeScale().fitContent()
 
   const ro = new ResizeObserver(() => {
@@ -282,91 +315,191 @@ function renderEquityChart() {
   ro.observe(equityChartEl.value)
 }
 
-// Re-render chart if result changes
 watch(result, async (val) => {
   if (val) { await nextTick(); renderEquityChart() }
 })
 </script>
 
 <style lang="scss" scoped>
-.backtest-page { background: var(--bg-deep); min-height: 100vh; }
-
-.param-title {
-  font-size: 10px; font-weight: 700; letter-spacing: 2px;
-  color: var(--text-muted); text-transform: uppercase;
-}
-.param-row {
-  margin-bottom: 16px;
-}
-.param-label {
-  display: block; font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;
+.backtest-page {
+  background: var(--bg-deep);
+  min-height: 100vh;
 }
 
-// ── Metric cards ──
-.metric-card {
+.font-mono { font-family: 'Roboto Mono', monospace; }
+.text-muted { color: var(--text-muted); }
+.gap-1 { gap: 4px; }
+
+// ── Toolbar ───────────────────────────────────────────────────────────────────
+.bt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+
+  @media (max-width: 599px) { padding: 12px; }
+}
+
+// ── Layout ────────────────────────────────────────────────────────────────────
+.bt-body {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  align-items: flex-start;
+
+  @media (max-width: 1023px) {
+    flex-direction: column;
+    padding: 14px;
+    gap: 14px;
+  }
+  @media (max-width: 599px) { padding: 10px; gap: 10px; }
+}
+
+.bt-params-col {
+  width: 260px;
+  flex-shrink: 0;
+  @media (max-width: 1023px) { width: 100%; }
+}
+
+.bt-results-col {
+  flex: 1;
+  min-width: 0;
+}
+
+// ── Params card ───────────────────────────────────────────────────────────────
+.params-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-  padding: 16px 18px;
-  text-align: center;
-  transition: border-color 0.3s;
-  &.card-green { border-color: rgba(0,255,136,0.3); }
-  &.card-red   { border-color: rgba(255,68,102,0.3); }
-  &.card-amber { border-color: rgba(255,184,0,0.3); }
-}
-.metric-label {
-  font-size: 9px; font-weight: 700; letter-spacing: 2px;
-  color: var(--text-muted); margin-bottom: 6px;
-}
-.metric-value {
-  font-size: 26px; font-weight: 700;
-  font-family: 'Roboto Mono', monospace;
-  line-height: 1; color: var(--text-primary);
-}
-.metric-sub {
-  font-size: 11px; color: var(--text-muted); margin-top: 4px;
+  border-radius: 16px;
+  padding: 18px 20px;
+
+  @media (max-width: 1023px) {
+    // Horizontal sliders on tablet
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 20px;
+    .params-title { grid-column: 1 / -1; }
+    .q-separator  { grid-column: 1 / -1; }
+    > :last-child  { grid-column: 1 / -1; }
+  }
+  @media (max-width: 599px) {
+    grid-template-columns: 1fr;
+  }
 }
 
-// ── Chart header ──
-.chart-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px;
+.params-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-muted);
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 16px;
 }
 
-// ── Empty state ──
-.empty-state {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
+.param-block { margin-bottom: 16px; }
+
+.param-row-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.param-val { font-family: 'Roboto Mono', monospace; font-weight: 700; }
+
+.param-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.15);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+}
+
+// ── Empty state ───────────────────────────────────────────────────────────────
+.bt-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: 16px;
   padding: 60px 24px;
   margin-bottom: 16px;
   text-align: center;
+  min-height: 220px;
 }
 
-// ── Session breakdown ──
-.session-row {
-  display: flex; align-items: center; gap: 10px;
+// ── Metric cards ──────────────────────────────────────────────────────────────
+.metric-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 14px 16px;
+  text-align: center;
+  transition: border-color 0.2s;
+  &:hover { border-color: var(--border-glow); }
+
+  &.mc-green     { border-color: rgba(0,255,136,0.3); }
+  &.mc-amber     { border-color: rgba(255,184,0,0.3); }
+  &.mc-red       { border-color: rgba(255,68,102,0.3); }
+  &.mc-red-soft  { border-color: rgba(255,68,102,0.15); }
+
+  @media (max-width: 599px) { padding: 12px; border-radius: 10px; }
+}
+.mc-label { font-size: 9px; font-weight: 700; letter-spacing: 2px; color: var(--text-muted); margin-bottom: 6px; }
+.mc-val   { font-size: 24px; font-weight: 700; line-height: 1; color: var(--text-primary); @media (max-width: 599px) { font-size: 20px; } }
+.mc-sub   { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+.mc-bar-wrap { height: 3px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; margin-top: 8px; }
+.mc-bar  { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+
+// ── Equity card ───────────────────────────────────────────────────────────────
+.equity-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.equity-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+// ── Breakdown cards ───────────────────────────────────────────────────────────
+.breakdown-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 16px;
+  height: 100%;
+}
+.bd-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.bd-row {
+  display: flex; align-items: center; gap: 8px;
   padding: 6px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
   &:last-child { border-bottom: none; }
 }
-.session-name {
-  font-size: 11px; color: var(--text-secondary);
-  width: 140px; flex-shrink: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.session-bar-wrap {
-  flex: 1; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden;
-}
-.session-bar-fill {
-  height: 100%; border-radius: 2px; transition: width 0.8s ease;
-}
-.session-stats {
-  font-size: 11px; font-weight: 600; white-space: nowrap;
-}
-
-.text-muted    { color: var(--text-muted); }
-.text-secondary { color: var(--text-secondary); }
+.bd-name   { font-size: 11px; color: var(--text-secondary); width: 100px; flex-shrink: 0; }
+.bd-bar-wrap { flex: 1; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.bd-bar-fill { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+.bd-stat   { font-size: 11px; font-weight: 700; width: 36px; text-align: right; flex-shrink: 0; }
+.bd-trades { font-size: 10px; width: 48px; text-align: right; flex-shrink: 0; }
 </style>
