@@ -83,11 +83,11 @@ const APP_ID = import.meta.env.VITE_DERIV_APP_ID ?? '33qwHdRH3vY9cCAeAzIa7'
 function loginWithDeriv() {
   loading.value = true
 
-  // A Deriv usa o redirect_uri JÁ REGISTRADO no app
-  // (https://anagraph-ten.vercel.app/auth/callback) — não passamos por query.
-  // Após autorizar, a Deriv volta para esse path com ?acct1=&token1=...
-  // O Vercel serve index.html (catch-all) e o boot 'oauth-redirect' processa.
-  const url = `https://oauth.deriv.com/oauth2/authorize?app_id=${APP_ID}&l=PT`
+  // redirect_uri deve ser passado explicitamente — sem o hash (#)
+  // Deriv redireciona para: https://anagraph-ten.vercel.app/auth/callback?acct1=...
+  // Vercel serve index.html (catch-all) → boot oauth-redirect processa os params
+  const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback')
+  const url = `https://oauth.deriv.com/oauth2/authorize?app_id=${APP_ID}&l=PT&redirect_uri=${redirectUri}`
   window.location.href = url
 }
 </script>
