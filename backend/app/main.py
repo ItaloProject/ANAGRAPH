@@ -21,9 +21,9 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-DEFAULT_API_TOKEN   = os.getenv("DERIV_API_TOKEN", "")
-DEFAULT_ACCOUNT_ID  = os.getenv("DERIV_ACCOUNT_ID", "")
-DEFAULT_APP_ID      = os.getenv("DERIV_APP_ID", "33qwHdRH3vY9cCAeAzIa7")
+DEFAULT_API_TOKEN   = os.getenv("DERIV_API_TOKEN", "").strip()
+DEFAULT_ACCOUNT_ID  = os.getenv("DERIV_ACCOUNT_ID", "").strip()
+DEFAULT_APP_ID      = os.getenv("DERIV_APP_ID", "33qwHdRH3vY9cCAeAzIa7").strip()
 
 app = FastAPI(title="ANAGRAPH API", version="1.1.0")
 
