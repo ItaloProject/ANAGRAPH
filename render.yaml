@@ -27,3 +27,5 @@
         value: "10.0"
       - key: MIN_CONFIDENCE
         value: "78.0"
+      - key: BOT_AUTOSTART
+        value: "true"

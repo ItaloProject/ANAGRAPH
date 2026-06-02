@@ -21,6 +21,9 @@ jobs:
 
           if [ "$STATUS" = "200" ]; then
             echo "✅ Backend ONLINE"
+            curl -s -X POST \
+              https://anagraph-api.onrender.com/api/bot/ensure-running \
+              --max-time 60 || true
           else
             echo "⚠️  Backend retornou $STATUS (pode estar acordando)"
           fi

@@ -23,10 +23,10 @@
         <div>
           <div class="text-caption text-muted" style="font-size:10px;letter-spacing:1px;">ESTADO DO ROBÔ</div>
           <div class="text-weight-bold" :class="botStore.running ? 'text-neon-green' : 'text-muted'" style="font-size:15px;">
-            {{ botStore.running ? 'ATIVO — operando ao vivo' : 'INATIVO' }}
+            {{ botStore.running ? 'ATIVO — roda no servidor 24/7' : 'INATIVO' }}
           </div>
-          <div v-if="botStore.running && botStore.accountLoginId" class="text-caption text-muted" style="font-size:10px;">
-            {{ botStore.accountLoginId }} · {{ botStore.accountIsDemo ? 'Demo' : 'Real' }}
+          <div v-if="botStore.running" class="text-caption text-muted" style="font-size:10px;">
+            Pode fechar o app — o robô continua operando
           </div>
         </div>
       </div>
@@ -74,13 +74,13 @@
               <q-icon :name="accountReady ? 'check_circle' : 'warning'" size="16px" />
               <span>{{ accountReady ? 'Conta conectada' : 'Conta não configurada' }}</span>
             </div>
+            <div class="pf-item" :class="botStore.running ? 'pf-ok' : 'pf-warn'">
+              <q-icon :name="botStore.running ? 'cloud_done' : 'cloud_off'" size="16px" />
+              <span>{{ botStore.running ? 'Robô ativo no servidor (2º plano)' : 'Robô parado no servidor' }}</span>
+            </div>
             <div class="pf-item" :class="riskOk ? 'pf-ok' : 'pf-warn'">
               <q-icon :name="riskOk ? 'check_circle' : 'warning'" size="16px" />
               <span>{{ riskOk ? 'Risco dentro do limite' : 'Stake alto em relação ao limite' }}</span>
-            </div>
-            <div class="pf-item pf-ok">
-              <q-icon name="check_circle" size="16px" />
-              <span>Modo precisão conservador ativo</span>
             </div>
           </div>
         </div>

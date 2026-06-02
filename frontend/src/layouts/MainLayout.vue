@@ -141,7 +141,6 @@ const authStore = useAuthStore()
 store.connect()
 
 function logout() {
-  botStore.stopBot()
   authStore.logout()
   router.push('/login')
 }

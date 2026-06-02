@@ -1,0 +1,17 @@
+{
+  "name": "ANAGRAPH Trading Bot",
+  "short_name": "ANAGRAPH",
+  "description": "AI Trading Bot DERIV — opera no servidor em segundo plano",
+  "start_url": "/#/login",
+  "display": "standalone",
+  "background_color": "#080d1a",
+  "theme_color": "#080d1a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}

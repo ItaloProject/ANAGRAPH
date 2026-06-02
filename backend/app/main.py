@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -24,8 +25,43 @@ logger = logging.getLogger(__name__)
 DEFAULT_API_TOKEN   = os.getenv("DERIV_API_TOKEN", "").strip()
 DEFAULT_ACCOUNT_ID  = os.getenv("DERIV_ACCOUNT_ID", "").strip()
 DEFAULT_APP_ID      = os.getenv("DERIV_APP_ID", "33qwHdRH3vY9cCAeAzIa7").strip()
+BOT_AUTOSTART       = os.getenv("BOT_AUTOSTART", "true").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="ANAGRAPH API", version="1.1.0")
+_bot: Optional["TradingBot"] = None
+_ws_clients: list[WebSocket] = []
+_autostart_lock = asyncio.Lock()
+_watchdog_task: Optional[asyncio.Task] = None
+
+
+async def _watchdog_loop():
+    """Reativa o bot no servidor se parar inesperadamente (modo 24/7)."""
+    while True:
+        await asyncio.sleep(90)
+        if not BOT_AUTOSTART:
+            continue
+        try:
+            await _ensure_bot_running()
+        except Exception as e:
+            logger.error(f"Watchdog error: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _watchdog_task
+    _watchdog_task = asyncio.create_task(_watchdog_loop())
+    await asyncio.sleep(1.5)
+    if BOT_AUTOSTART:
+        asyncio.create_task(_ensure_bot_running())
+    yield
+    if _watchdog_task:
+        _watchdog_task.cancel()
+    global _bot
+    if _bot and _bot.running:
+        await _bot.stop()
+        _bot = None
+
+
+app = FastAPI(title="ANAGRAPH API", version="1.1.0", lifespan=lifespan)
 
 ALLOWED_ORIGINS = [
     "http://localhost:9000",          # dev Quasar
@@ -48,10 +84,6 @@ app.add_middleware(
 app.include_router(signals.router,  prefix="/api/signals",  tags=["signals"])
 app.include_router(market.router,   prefix="/api/market",   tags=["market"])
 app.include_router(backtest.router, prefix="/api/backtest", tags=["backtest"])
-
-_bot: Optional[TradingBot] = None
-_ws_clients: list[WebSocket] = []
-
 
 async def _broadcast(event: str, data: dict):
     payload = json.dumps({"event": event, "data": data})
@@ -100,11 +132,22 @@ def _enforce_conservative(req: BotStartRequest) -> BotStartRequest:
     return req
 
 
-@app.post("/api/bot/start")
-async def start_bot(req: BotStartRequest):
+def _build_risk_config(req: BotStartRequest) -> RiskConfig:
+    return RiskConfig(
+        stake_amount=brl_to_usd(req.stake_amount),
+        max_stake=brl_to_usd(req.max_stake),
+        daily_loss_limit=brl_to_usd(req.daily_loss_limit),
+        daily_profit_target=brl_to_usd(req.daily_profit_target),
+        min_confidence=req.min_confidence,
+        max_consecutive_losses=req.max_consecutive_losses,
+        cooldown_after_loss_sec=req.cooldown_after_loss_sec,
+    )
+
+
+async def _launch_bot(req: BotStartRequest) -> dict:
     global _bot
     if _bot and _bot.running:
-        return {"status": "already_running"}
+        return {"status": "already_running", "bot_running": True}
 
     req = _enforce_conservative(req)
     api_token  = (req.api_token or DEFAULT_API_TOKEN).strip()
@@ -116,16 +159,6 @@ async def start_bot(req: BotStartRequest):
     if not account_id:
         raise HTTPException(400, "Account ID não configurado. Defina DERIV_ACCOUNT_ID no backend/.env")
 
-    risk_config = RiskConfig(
-        stake_amount=brl_to_usd(req.stake_amount),
-        max_stake=brl_to_usd(req.max_stake),
-        daily_loss_limit=brl_to_usd(req.daily_loss_limit),
-        daily_profit_target=brl_to_usd(req.daily_profit_target),
-        min_confidence=req.min_confidence,
-        max_consecutive_losses=req.max_consecutive_losses,
-        cooldown_after_loss_sec=req.cooldown_after_loss_sec,
-    )
-
     _bot = TradingBot(
         api_token=api_token,
         app_id=app_id,
@@ -133,7 +166,7 @@ async def start_bot(req: BotStartRequest):
         asset=req.asset,
         granularity=req.granularity,
         contract_duration=req.contract_duration,
-        risk_config=risk_config,
+        risk_config=_build_risk_config(req),
         analyzer_min_score=req.analyzer_min_score,
         analyzer_min_gap=req.analyzer_min_gap,
         analyzer_min_adx=req.analyzer_min_adx,
@@ -147,9 +180,48 @@ async def start_bot(req: BotStartRequest):
     asyncio.create_task(_bot.start())
     return {
         "status": "started",
+        "bot_running": True,
         "mode": "conservative_precision",
         "profile": "conservative",
         "duration_minutes": req.contract_duration,
+        "background_mode": True,
+    }
+
+
+async def _ensure_bot_running() -> bool:
+    """Garante bot ativo no servidor — independe do browser/celular."""
+    if not BOT_AUTOSTART or not DEFAULT_API_TOKEN or not DEFAULT_ACCOUNT_ID:
+        return bool(_bot and _bot.running)
+
+    async with _autostart_lock:
+        if _bot and _bot.running:
+            return True
+        try:
+            await _launch_bot(BotStartRequest())
+            logger.info("Bot autostarted on server (background mode)")
+            return True
+        except HTTPException:
+            return False
+        except Exception as e:
+            logger.error(f"Autostart failed: {e}")
+            return False
+
+
+@app.post("/api/bot/start")
+async def start_bot(req: BotStartRequest):
+    return await _launch_bot(req)
+
+
+@app.post("/api/bot/ensure-running")
+async def ensure_bot_running():
+    """Reativa o bot no servidor — usado pelo keep-alive e após reinício do Render."""
+    if not DEFAULT_API_TOKEN or not DEFAULT_ACCOUNT_ID:
+        raise HTTPException(400, "Credenciais DERIV não configuradas")
+    ok = await _ensure_bot_running()
+    return {
+        "status": "running" if ok else "failed",
+        "bot_running": bool(_bot and _bot.running),
+        "background_mode": True,
     }
 
 
@@ -194,11 +266,16 @@ async def websocket_endpoint(ws: WebSocket):
 @app.get("/api/health")
 async def health():
     """Leve — não consulta DERIV (evita travar o servidor)."""
+    if BOT_AUTOSTART and DEFAULT_API_TOKEN and DEFAULT_ACCOUNT_ID:
+        if not _bot or not _bot.running:
+            asyncio.create_task(_ensure_bot_running())
     return {
         "status": "ok",
         "bot_running": _bot.running if _bot else False,
         "ws_clients": len(_ws_clients),
         "credentials_configured": bool(DEFAULT_API_TOKEN and DEFAULT_ACCOUNT_ID),
+        "autostart_enabled": BOT_AUTOSTART,
+        "background_mode": True,
     }
 
 

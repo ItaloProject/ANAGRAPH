@@ -102,6 +102,31 @@ export const useBotStore = defineStore('bot', () => {
   const openContracts    = ref(0)
 
   let ws: BotWebSocket | null = null
+  const notifiedTradeIds = new Set<string>()
+
+  async function requestNotificationPermission() {
+    if (typeof window === 'undefined' || !('Notification' in window)) return
+    if (Notification.permission === 'default') {
+      try { await Notification.requestPermission() } catch { /* ignore */ }
+    }
+  }
+
+  function notifyTradeIfBackground(trade: TradeRecord) {
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') return
+    if (!('Notification' in window) || Notification.permission !== 'granted') return
+    if (notifiedTradeIds.has(trade.id)) return
+    notifiedTradeIds.add(trade.id)
+
+    const isWin = trade.status === 'WIN'
+    const pnlBrl = formatBrl(usdToBrl(trade.pnl))
+    try {
+      new Notification(isWin ? 'ANAGRAPH — GANHOU' : 'ANAGRAPH — PERDEU', {
+        body: `${trade.signal} · ${pnlBrl}`,
+        icon: '/favicon.ico',
+        tag: trade.id,
+      })
+    } catch { /* Safari/iOS */ }
+  }
 
   function recomputeStatsFromTrades(): BotStats {
     const closed = trades.value.filter(t => t.status === 'WIN' || t.status === 'LOSS')
@@ -197,6 +222,7 @@ export const useBotStore = defineStore('bot', () => {
       if (idx >= 0) trades.value[idx] = normalized
       else trades.value.unshift(normalized)
       if (normalized.status === 'WIN' || normalized.status === 'LOSS') {
+        notifyTradeIfBackground(normalized)
         fetchAccountStatus()
       }
       return
@@ -312,6 +338,12 @@ export const useBotStore = defineStore('bot', () => {
       if (res.data.account) applyAccount(res.data.account)
       else await fetchAccountStatus()
       if (res.data.bot_running) await syncFromBackend()
+      else if (res.data.autostart_enabled) {
+        try {
+          await botApi.ensureRunning()
+          await syncFromBackend()
+        } catch { /* autostart pending */ }
+      }
     } catch {
       backendOnline.value = false
     }
@@ -346,6 +378,6 @@ export const useBotStore = defineStore('bot', () => {
     usdBrlRate: getUsdBrlRate, formatUsdAsBrl, formatBrl, usdToBrl,
     connectBackend, disconnectBackend,
     startBot, stopBot, checkBackend, syncFromBackend, reconcileTrades, fetchDailyStats,
-    fetchCurrencyConfig, applySnapshot, fetchAccountStatus,
+    fetchCurrencyConfig, applySnapshot, fetchAccountStatus, requestNotificationPermission,
   }
 })
