@@ -86,12 +86,11 @@ const APP_ID = import.meta.env.VITE_DERIV_APP_ID ?? '33qwHdRH3vY9cCAeAzIa7'
 function loginWithDeriv() {
   loading.value = true
 
-  // Com hash routing, o redirect_uri inclui o hash:
-  // https://app.com/#/auth/callback
-  // A Deriv appenda os params no hash:
-  // https://app.com/#/auth/callback?acct1=VRTCX&token1=...
-  const base = window.location.origin + window.location.pathname
-  const redirectUri = encodeURIComponent(base + '#/auth/callback')
+  // OAuth não suporta '#' no redirect_uri.
+  // Usamos path real: https://app.com/auth/callback
+  // O Vercel serve index.html para qualquer path (catch-all rewrite).
+  // O boot 'oauth-redirect' processa os params e redireciona para /#/
+  const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback')
 
   const url = `https://oauth.deriv.com/oauth2/authorize?app_id=${APP_ID}&l=PT&brand=deriv&redirect_uri=${redirectUri}`
   window.location.href = url

@@ -3,7 +3,7 @@ import { configure } from 'quasar/wrappers'
 export default configure(function (/* ctx */) {
   return {
     eslint: { warnings: true, errors: true },
-    boot: ['pinia', 'axios'],
+    boot: ['pinia', 'axios', 'oauth-redirect'],
     css: ['app.scss'],
     extras: ['material-icons', 'fontawesome-v6', 'roboto-font'],
     build: {
