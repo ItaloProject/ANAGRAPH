@@ -160,8 +160,8 @@ onMounted(async () => {
     if (data.token_configured && data.account_configured) {
       serverSession.value = {
         available:     true,
-        account_id:    data.account_id,
-        account_hint:  data.account_id_hint,
+        account_id:    data.account_id || 'SERVER',
+        account_hint:  data.account_id_hint || data.account_id || 'Conta configurada',
         is_demo:       data.is_demo ?? true,
         currency:      'USD',
       }
