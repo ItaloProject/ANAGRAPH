@@ -78,6 +78,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import type { DerivAccount } from '../stores/auth'
 
+import { parseDerivOAuthQuery, takeOAuthSearch } from '../utils/derivOAuth'
+
 const router    = useRouter()
 const route     = useRoute()
 const authStore = useAuthStore()
@@ -88,31 +90,18 @@ const errorMsg = ref('')
 const accounts = ref<DerivAccount[]>([])
 
 onMounted(() => {
-  // ── Com hash routing, a Deriv redireciona para:
-  //    https://app.com/#/auth/callback?acct1=VRTCX&token1=TOKEN
-  // Vue Router com hash history já parseia corretamente:
-  //    route.query = { acct1: 'VRTCX', token1: 'TOKEN', ... }
-  //
-  // Fallback: se chegou por URL normal (sem hash), usa window.location.search
-  const q = Object.keys(route.query).length
-    ? route.query
-    : Object.fromEntries(new URLSearchParams(window.location.search))
+  let search = takeOAuthSearch() || window.location.search
 
-  const found: DerivAccount[] = []
-  let i = 1
-  while (q[`acct${i}`]) {
-    const acctId = String(q[`acct${i}`])
-    found.push({
-      account:   acctId,
-      token:     String(q[`token${i}`] ?? ''),
-      currency:  String(q[`cur${i}`] ?? 'USD'),
-      isVirtual: acctId.startsWith('VRTC'),
-    })
-    i++
+  if (!search.includes('acct1=') && Object.keys(route.query).length) {
+    search = '?' + new URLSearchParams(route.query as Record<string, string>).toString()
   }
 
+  const found = parseDerivOAuthQuery(search)
+
   if (!found.length) {
-    errorMsg.value = 'Nenhuma conta encontrada na resposta da DERIV. Tente fazer login novamente.'
+    errorMsg.value =
+      'Nenhuma conta na resposta da DERIV. Cadastre no App Manager a URL exata: ' +
+      `${window.location.origin}/auth/callback`
     state.value = 'error'
     return
   }

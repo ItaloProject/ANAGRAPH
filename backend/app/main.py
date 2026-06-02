@@ -248,6 +248,25 @@ async def credentials_status():
     }
 
 
+@app.get("/api/auth/session")
+async def auth_session():
+    """Indica se o backend já tem credenciais DERIV — frontend entra sem OAuth."""
+    if not DEFAULT_API_TOKEN or not DEFAULT_ACCOUNT_ID:
+        return {"available": False}
+
+    aid = DEFAULT_ACCOUNT_ID.upper()
+    is_demo = aid.startswith("VRT") or aid.startswith("VRW") or aid.startswith("DOT")
+
+    return {
+        "available":     True,
+        "app_id":        DEFAULT_APP_ID,
+        "account_id":    DEFAULT_ACCOUNT_ID,
+        "account_hint":  DEFAULT_ACCOUNT_ID[:3] + "..." + DEFAULT_ACCOUNT_ID[-2:],
+        "is_demo":       is_demo,
+        "currency":      "USD",
+    }
+
+
 @app.get("/api/config/currency")
 async def get_currency_config():
     """Moeda de exibição (BRL) e cotação USD/BRL para conversão na UI."""

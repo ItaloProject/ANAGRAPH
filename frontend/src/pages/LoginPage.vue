@@ -1,14 +1,12 @@
 <template>
   <div class="login-page flex flex-center" style="min-height:100vh;width:100%">
 
-    <!-- Background grid -->
     <div class="bg-grid" />
     <div class="scan-overlay" />
 
     <div class="login-card animate-float">
 
-      <!-- Logo -->
-      <div class="logo-wrap q-mb-xl">
+      <div class="logo-wrap q-mb-lg">
         <div class="logo-mark-lg" />
         <div class="logo-text">
           <span class="text-neon-cyan" style="font-size:36px;font-weight:800;letter-spacing:6px;">ANA</span>
@@ -19,50 +17,104 @@
         </div>
       </div>
 
-      <!-- Features -->
-      <div class="features q-mb-xl">
-        <div class="feature-item">
-          <q-icon name="auto_graph" color="cyan" size="18px" />
-          <span>Análise técnica em tempo real</span>
-        </div>
-        <div class="feature-item">
-          <q-icon name="bolt" color="positive" size="18px" />
-          <span>Sinais RSI + MACD + Bollinger</span>
-        </div>
-        <div class="feature-item">
-          <q-icon name="security" color="purple" size="18px" />
-          <span>Gerenciamento de risco automático</span>
-        </div>
-        <div class="feature-item">
-          <q-icon name="account_balance_wallet" color="amber" size="18px" />
-          <span>Conta Demo $10.000 virtual</span>
-        </div>
-      </div>
+      <q-banner v-if="oauthError" dense rounded class="bg-negative text-white q-mb-md">
+        OAuth: {{ oauthError }}
+      </q-banner>
 
-      <!-- Login button -->
-      <q-btn
-        unelevated
-        class="login-btn full-width q-py-md"
-        @click="loginWithDeriv"
-        :loading="loading"
-      >
-        <div class="row items-center gap-3 justify-center">
-          <img src="https://deriv.com/static/images/logo/brand/deriv-logo-red.svg"
-            style="height:24px;" alt="Deriv" onerror="this.style.display='none'"
-          />
-          <span class="text-weight-bold" style="font-size:15px;letter-spacing:1px;">
-            ENTRAR COM DERIV
-          </span>
-          <q-icon name="arrow_forward" size="18px" />
+      <!-- Entrada principal: servidor já configurado -->
+      <template v-if="serverSession?.available">
+        <div class="server-ready q-mb-md">
+          <q-icon name="check_circle" color="positive" size="20px" />
+          <div>
+            <div class="text-weight-bold text-neon-green">Servidor pronto</div>
+            <div class="text-caption text-muted">
+              Conta {{ serverSession.is_demo ? 'Demo' : 'Real' }} · {{ serverSession.account_hint }}
+            </div>
+          </div>
         </div>
+
+        <q-btn
+          unelevated
+          class="login-btn full-width q-py-md"
+          :loading="entering"
+          @click="enterWithServer"
+        >
+          <span class="text-weight-bold" style="font-size:15px;letter-spacing:1px;">
+            ENTRAR NO ANAGRAPH
+          </span>
+          <q-icon name="arrow_forward" class="q-ml-sm" />
+        </q-btn>
+
+        <div class="text-caption text-muted text-center q-mt-sm">
+          Usa as credenciais seguras do servidor — sem OAuth.
+        </div>
+      </template>
+
+      <template v-else-if="checkingServer">
+        <div class="text-center q-py-lg">
+          <q-spinner-dots color="cyan" size="40px" />
+          <div class="text-caption text-muted q-mt-sm">Conectando ao servidor...</div>
+        </div>
+      </template>
+
+      <template v-else>
+        <q-banner dense rounded class="bg-warning text-black q-mb-md">
+          Servidor offline ou sem credenciais. Use OAuth ou token manual abaixo.
+        </q-banner>
+      </template>
+
+      <q-separator class="q-my-lg" color="grey-9" />
+
+      <div class="text-caption text-muted q-mb-sm" style="letter-spacing:1px;">OUTRAS OPÇÕES</div>
+
+      <q-btn
+        outline
+        color="negative"
+        class="full-width q-mb-sm"
+        no-caps
+        :loading="oauthLoading"
+        @click="loginWithDeriv"
+      >
+        <span class="text-weight-bold">Entrar com OAuth DERIV</span>
       </q-btn>
 
-      <div class="text-caption text-muted text-center q-mt-md">
-        Você será redirecionado para o site da DERIV para autorizar o acesso.<br>
-        O token fica salvo localmente no seu navegador para operar o bot.
-      </div>
+      <q-expansion-item
+        dense
+        icon="vpn_key"
+        label="Colar token API manualmente"
+        header-class="text-cyan"
+        class="manual-token q-mt-xs"
+      >
+        <div class="q-pa-sm">
+          <q-input
+            v-model="manualAccount"
+            dense
+            outlined
+            dark
+            label="Account ID (ex: DOT91884478)"
+            class="q-mb-sm"
+          />
+          <q-input
+            v-model="manualToken"
+            dense
+            outlined
+            dark
+            type="password"
+            label="API Token"
+            class="q-mb-sm"
+          />
+          <q-btn
+            flat
+            no-caps
+            color="cyan"
+            class="full-width"
+            label="Entrar com token"
+            :disable="!manualAccount.trim() || !manualToken.trim()"
+            @click="enterWithManualToken"
+          />
+        </div>
+      </q-expansion-item>
 
-      <!-- Demo badge -->
       <div class="demo-badge q-mt-lg">
         <q-icon name="school" size="14px" />
         <span>Funciona com conta Demo — sem risco real</span>
@@ -73,22 +125,66 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useQuasar } from 'quasar'
+import { buildDerivOAuthUrl } from '../utils/derivOAuth'
+import { botApi } from '../services/botApi'
+import { useAuthStore } from '../stores/auth'
 
-const loading = ref(false)
+interface ServerSession {
+  available: boolean
+  account_id?: string
+  account_hint?: string
+  is_demo?: boolean
+  currency?: string
+}
 
-// App ID registrado no portal Deriv (app.deriv.com → Registered Apps)
-const APP_ID = import.meta.env.VITE_DERIV_APP_ID ?? '33qwHdRH3vY9cCAeAzIa7'
+const $q         = useQuasar()
+const router     = useRouter()
+const authStore  = useAuthStore()
+
+const checkingServer = ref(true)
+const entering       = ref(false)
+const oauthLoading   = ref(false)
+const serverSession  = ref<ServerSession | null>(null)
+const oauthError     = ref(sessionStorage.getItem('oauth_error') ?? '')
+const manualAccount  = ref('')
+const manualToken    = ref('')
+
+onMounted(async () => {
+  if (oauthError.value) sessionStorage.removeItem('oauth_error')
+
+  try {
+    const { data } = await botApi.session()
+    serverSession.value = data as ServerSession
+  } catch {
+    serverSession.value = { available: false }
+  } finally {
+    checkingServer.value = false
+  }
+})
+
+function enterWithServer() {
+  if (!serverSession.value?.available || !serverSession.value.account_id) return
+  entering.value = true
+  authStore.loginWithServerSession({
+    account_id: serverSession.value.account_id,
+    is_demo:    serverSession.value.is_demo,
+    currency:   serverSession.value.currency,
+  })
+  router.push('/')
+}
+
+function enterWithManualToken() {
+  authStore.loginWithManualToken(manualAccount.value, manualToken.value)
+  $q.notify({ type: 'positive', message: 'Token salvo localmente', position: 'top-right' })
+  router.push('/')
+}
 
 function loginWithDeriv() {
-  loading.value = true
-
-  // redirect_uri deve ser passado explicitamente — sem o hash (#)
-  // Deriv redireciona para: https://anagraph-ten.vercel.app/auth/callback?acct1=...
-  // Vercel serve index.html (catch-all) → boot oauth-redirect processa os params
-  const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback')
-  const url = `https://oauth.deriv.com/oauth2/authorize?app_id=${APP_ID}&l=PT&redirect_uri=${redirectUri}`
-  window.location.href = url
+  oauthLoading.value = true
+  window.location.href = buildDerivOAuthUrl()
 }
 </script>
 
@@ -133,27 +229,29 @@ function loginWithDeriv() {
 }
 .logo-text { display: flex; align-items: baseline; }
 
-.features {
-  display: flex; flex-direction: column; gap: 12px;
-}
-.feature-item {
-  display: flex; align-items: center; gap: 10px;
-  font-size: 13px; color: var(--text-secondary);
-  padding: 8px 12px;
-  background: rgba(255,255,255,0.03);
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.04);
+.server-ready {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  background: rgba(0,255,136,0.06);
+  border: 1px solid rgba(0,255,136,0.25);
+  border-radius: 12px;
 }
 
 .login-btn {
-  background: linear-gradient(135deg, #FF444C, #CC0000) !important;
+  background: linear-gradient(135deg, #00d4ff, #0099cc) !important;
   border-radius: 12px !important;
-  box-shadow: 0 4px 24px rgba(255,68,76,0.4) !important;
-  transition: all 0.3s ease !important;
+  box-shadow: 0 4px 24px rgba(0,212,255,0.35) !important;
+  color: #000 !important;
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 32px rgba(255,68,76,0.6) !important;
+    box-shadow: 0 8px 32px rgba(0,212,255,0.5) !important;
   }
+}
+
+.manual-token {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .demo-badge {
@@ -165,6 +263,5 @@ function loginWithDeriv() {
   font-size: 12px; color: var(--accent-green);
 }
 
-.gap-3 { gap: 12px; }
 .text-muted { color: var(--text-muted); }
 </style>

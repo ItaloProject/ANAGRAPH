@@ -357,9 +357,10 @@ const canStart  = computed(() => botStore.backendOnline && accountReady.value)
 
 async function startBot() {
   const payload: BotConfig = enforceConservative({ ...config.value, api_token: '', account_id: '' })
-  if (authStore.account?.token) {
-    payload.api_token  = authStore.account.token
-    payload.account_id = authStore.account.account
+  const oauthToken = authStore.account?.token
+  if (oauthToken && oauthToken !== 'server') {
+    payload.api_token  = oauthToken
+    payload.account_id = authStore.account!.account
   }
   errorMsg.value = ''
   starting.value = true

@@ -27,10 +27,33 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('deriv_account', JSON.stringify(acc))
   }
 
+  function loginWithServerSession(session: {
+    account_id: string
+    is_demo?: boolean
+    currency?: string
+  }) {
+    setAccount({
+      account:   session.account_id,
+      token:     'server',
+      currency:  session.currency ?? 'USD',
+      isVirtual: session.is_demo ?? true,
+    })
+  }
+
+  function loginWithManualToken(accountId: string, token: string, currency = 'USD') {
+    const id = accountId.trim().toUpperCase()
+    setAccount({
+      account:   accountId.trim(),
+      token:     token.trim(),
+      currency:  currency.toUpperCase(),
+      isVirtual: id.startsWith('VRTC') || id.startsWith('VRW') || id.startsWith('DOT'),
+    })
+  }
+
   function logout() {
     account.value = null
     localStorage.removeItem('deriv_account')
   }
 
-  return { account, isLoggedIn, isDemo, accountLabel, setAccount, logout }
+  return { account, isLoggedIn, isDemo, accountLabel, setAccount, loginWithServerSession, loginWithManualToken, logout }
 })

@@ -1,4 +1,5 @@
 import { api } from './http'
+import { resolveWsBase } from '../config/api'
 
 export interface BotConfig {
   api_token: string
@@ -27,6 +28,7 @@ export const botApi = {
   status: ()                  => api.get('/bot/status'),
   health: ()                  => api.get('/health'),
   credentials: ()             => api.get('/bot/credentials'),
+  session: ()                 => api.get('/auth/session'),
   accountStatus: ()            => api.get('/account/status'),
   currencyConfig: ()            => api.get('/config/currency'),
   dailyStats: ()               => api.get('/bot/daily-stats'),
@@ -34,12 +36,7 @@ export const botApi = {
 }
 
 function wsUrl(): string {
-  // Prod: VITE_WS_BASE = wss://anagraph-api.onrender.com
-  const override = import.meta.env.VITE_WS_BASE as string | undefined
-  if (override) return `${override.replace(/\/$/, '')}/ws`
-  if (typeof window === 'undefined') return 'ws://localhost:8001/ws'
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${proto}//${window.location.host}/ws`
+  return `${resolveWsBase()}/ws`
 }
 
 export class BotWebSocket {
