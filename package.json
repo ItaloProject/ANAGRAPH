@@ -1,0 +1,6 @@
+{
+  "name": "anagraph",
+  "scripts": {
+    "dev": "cd frontend && node node_modules/@quasar/app-vite/bin/quasar.js dev"
+  }
+}

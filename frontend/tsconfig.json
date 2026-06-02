@@ -1,0 +1,19 @@
+{
+  "extends": "./node_modules/@quasar/app-vite/types/tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "src/*": ["src/*"],
+      "app/*": ["/*"],
+      "components/*": ["src/components/*"],
+      "layouts/*":    ["src/layouts/*"],
+      "pages/*":      ["src/pages/*"],
+      "assets/*":     ["src/assets/*"],
+      "boot/*":       ["src/boot/*"],
+      "stores/*":     ["src/stores/*"],
+      "services/*":   ["src/services/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"]
+}
+
