@@ -77,22 +77,17 @@ import { ref } from 'vue'
 
 const loading = ref(false)
 
-// App ID registrado no portal Deriv Developers
-// ⚠️  O redirect_uri abaixo DEVE estar cadastrado em:
-//     https://app.deriv.com/account/api-token → OAuth Apps
-//     Adicione: https://SEU_DOMINIO.vercel.app/#/auth/callback
+// App ID registrado no portal Deriv (app.deriv.com → Registered Apps)
 const APP_ID = import.meta.env.VITE_DERIV_APP_ID ?? '33qwHdRH3vY9cCAeAzIa7'
 
 function loginWithDeriv() {
   loading.value = true
 
-  // OAuth não suporta '#' no redirect_uri.
-  // Usamos path real: https://app.com/auth/callback
-  // O Vercel serve index.html para qualquer path (catch-all rewrite).
-  // O boot 'oauth-redirect' processa os params e redireciona para /#/
-  const redirectUri = encodeURIComponent(window.location.origin + '/auth/callback')
-
-  const url = `https://oauth.deriv.com/oauth2/authorize?app_id=${APP_ID}&l=PT&brand=deriv&redirect_uri=${redirectUri}`
+  // A Deriv usa o redirect_uri JÁ REGISTRADO no app
+  // (https://anagraph-ten.vercel.app/auth/callback) — não passamos por query.
+  // Após autorizar, a Deriv volta para esse path com ?acct1=&token1=...
+  // O Vercel serve index.html (catch-all) e o boot 'oauth-redirect' processa.
+  const url = `https://oauth.deriv.com/oauth2/authorize?app_id=${APP_ID}&l=PT`
   window.location.href = url
 }
 </script>
