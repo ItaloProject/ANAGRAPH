@@ -338,12 +338,6 @@ export const useBotStore = defineStore('bot', () => {
       if (res.data.account) applyAccount(res.data.account)
       else await fetchAccountStatus()
       if (res.data.bot_running) await syncFromBackend()
-      else if (res.data.autostart_enabled) {
-        try {
-          await botApi.ensureRunning()
-          await syncFromBackend()
-        } catch { /* autostart pending */ }
-      }
     } catch {
       backendOnline.value = false
     }

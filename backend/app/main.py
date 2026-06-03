@@ -34,13 +34,14 @@ _bot: Optional["TradingBot"] = None
 _ws_clients: list[WebSocket] = []
 _autostart_lock = asyncio.Lock()
 _watchdog_task: Optional[asyncio.Task] = None
+_bot_manually_stopped = False   # True quando o usuário parou manualmente
 
 
 async def _watchdog_loop():
-    """Reativa o bot no servidor se parar inesperadamente (modo 24/7)."""
+    """Reativa o bot apenas se ele crashou — não reinicia se foi parado pelo usuário."""
     while True:
         await asyncio.sleep(90)
-        if not BOT_AUTOSTART:
+        if not BOT_AUTOSTART or _bot_manually_stopped:
             continue
         try:
             await _ensure_bot_running()
@@ -217,6 +218,8 @@ async def _ensure_bot_running() -> bool:
 
 @app.post("/api/bot/start")
 async def start_bot(req: BotStartRequest):
+    global _bot_manually_stopped
+    _bot_manually_stopped = False
     return await _launch_bot(req)
 
 
@@ -235,7 +238,8 @@ async def ensure_bot_running():
 
 @app.post("/api/bot/stop")
 async def stop_bot():
-    global _bot
+    global _bot, _bot_manually_stopped
+    _bot_manually_stopped = True   # watchdog não vai reiniciar
     if _bot:
         await _bot.stop()
         _bot = None
@@ -274,15 +278,12 @@ async def websocket_endpoint(ws: WebSocket):
 @app.get("/api/health")
 async def health():
     """Leve — não consulta DERIV (evita travar o servidor)."""
-    if BOT_AUTOSTART and DEFAULT_API_TOKEN and DEFAULT_ACCOUNT_ID:
-        if not _bot or not _bot.running:
-            asyncio.create_task(_ensure_bot_running())
     return {
         "status": "ok",
         "bot_running": _bot.running if _bot else False,
         "ws_clients": len(_ws_clients),
         "credentials_configured": bool(DEFAULT_API_TOKEN and DEFAULT_ACCOUNT_ID),
-        "autostart_enabled": BOT_AUTOSTART,
+        "autostart_enabled": BOT_AUTOSTART and not _bot_manually_stopped,
         "background_mode": True,
     }
 
