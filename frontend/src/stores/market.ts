@@ -162,7 +162,8 @@ export const useMarketStore = defineStore('market', () => {
       key_factor: string; events: any[]; headlines_count: number
     },
     learning: null as null | {
-      total_recorded: number; win_rate: number; model_trained: boolean; sample_count: number
+      total_recorded: number; win_rate: number; model_trained: boolean
+      sample_count: number; storage?: string
     },
     learning_label: '' as string,
   })

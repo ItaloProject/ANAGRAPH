@@ -294,7 +294,17 @@
 
         <!-- Aprendizado -->
         <div class="ai-card">
-          <div class="ai-card-label">APRENDIZADO IA</div>
+          <div class="ai-card-label ai-label-row">
+            <span>APRENDIZADO IA</span>
+            <span
+              v-if="ind.learning && ind.learning.storage"
+              class="storage-badge"
+              :class="ind.learning.storage === 'PostgreSQL' ? 'storage-pg' : ind.learning.storage === 'SQLite' ? 'storage-sqlite' : 'storage-err'"
+            >
+              <q-icon :name="ind.learning.storage === 'PostgreSQL' ? 'cloud_done' : 'sd_card'" size="9px" />
+              {{ ind.learning.storage === 'PostgreSQL' ? 'PERSISTENTE' : ind.learning.storage === 'SQLite' ? 'TEMPORÁRIO' : 'ERRO' }}
+            </span>
+          </div>
           <template v-if="ind.learning && ind.learning.model_trained">
             <div class="ai-wp-row">
               <span class="text-muted" style="font-size:11px;">Win Prob.</span>
@@ -825,6 +835,17 @@ onUnmounted(() => {
 .ai-card-label {
   font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
   color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;
+}
+.ai-label-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+}
+.storage-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 8px; font-weight: 700; letter-spacing: 0.5px;
+  padding: 1px 5px; border-radius: 4px;
+  &.storage-pg     { background: rgba(0,255,136,0.12); color: var(--accent-green); }
+  &.storage-sqlite { background: rgba(255,184,0,0.12); color: var(--accent-amber); }
+  &.storage-err    { background: rgba(255,68,102,0.12); color: var(--accent-red); }
 }
 .ai-sentiment-row {
   display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;
