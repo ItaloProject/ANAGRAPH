@@ -1,33 +1,32 @@
-import { register } from 'register-service-worker'
+/*
+ * Registro do Service Worker do ANAGRAPH PWA.
+ * Usa a API nativa do browser (sem dependência externa).
+ */
 
-register(process.env.SERVICE_WORKER_FILE as string, {
-  ready () {
-    console.log('[ANAGRAPH PWA] Service worker ativo — modo offline disponível.')
-  },
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register(
+        `${process.env.SERVICE_WORKER_FILE ?? '/sw.js'}`,
+        { scope: '/' },
+      )
 
-  registered () {
-    console.log('[ANAGRAPH PWA] Service worker registrado.')
-  },
+      reg.addEventListener('updatefound', () => {
+        const newSW = reg.installing
+        if (!newSW) return
 
-  cached () {
-    console.log('[ANAGRAPH PWA] Assets em cache — app disponível offline.')
-  },
+        newSW.addEventListener('statechange', () => {
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+            // Nova versão disponível — recarrega automaticamente
+            console.log('[ANAGRAPH PWA] Nova versão disponível. Atualizando...')
+            window.location.reload()
+          }
+        })
+      })
 
-  updatefound () {
-    console.log('[ANAGRAPH PWA] Nova versão disponível, baixando...')
-  },
-
-  updated () {
-    console.log('[ANAGRAPH PWA] Nova versão pronta. Recarregando...')
-    // Recarrega automaticamente ao detectar nova versão
-    window.location.reload()
-  },
-
-  offline () {
-    console.warn('[ANAGRAPH PWA] Sem conexão — usando cache local.')
-  },
-
-  error (err) {
-    console.error('[ANAGRAPH PWA] Erro no service worker:', err)
-  },
-})
+      console.log('[ANAGRAPH PWA] Service worker registrado:', reg.scope)
+    } catch (err) {
+      console.error('[ANAGRAPH PWA] Erro ao registrar service worker:', err)
+    }
+  })
+}
