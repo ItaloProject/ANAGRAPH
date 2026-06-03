@@ -61,23 +61,32 @@ class DerivClient:
         self._recv_task      = asyncio.create_task(self._recv_loop())
         self._keepalive_task = asyncio.create_task(self._keepalive_loop())
 
-    async def _get_ws_url_via_otp(self) -> str:
+    async def _get_ws_url_via_otp(self, max_retries: int = 3) -> str:
         url = f"{REST_BASE}/trading/v1/options/accounts/{self.account_id}/otp"
         headers = {
             "Deriv-App-ID":  self.app_id,
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type":  "application/json",
         }
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(url, headers=headers)
-            if resp.status_code != 200:
-                raise ValueError(
-                    f"OTP request failed ({resp.status_code}): {resp.text}"
-                )
-            data = resp.json()
-            ws_url = data["data"]["url"]
-            logger.info(f"Got authenticated WS URL: {ws_url[:60]}...")
-            return ws_url
+        last_err: Exception = RuntimeError("OTP: sem tentativas")
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, headers=headers)
+                if resp.status_code != 200:
+                    raise ValueError(
+                        f"OTP request failed ({resp.status_code}): {resp.text}"
+                    )
+                data   = resp.json()
+                ws_url = data["data"]["url"]
+                logger.info(f"Got authenticated WS URL: {ws_url[:60]}...")
+                return ws_url
+            except Exception as e:
+                last_err = e
+                logger.warning(f"OTP attempt {attempt}/{max_retries} failed: {e}")
+                if attempt < max_retries:
+                    await asyncio.sleep(5 * attempt)   # backoff: 5s, 10s
+        raise last_err
 
     async def disconnect(self):
         if self._keepalive_task:

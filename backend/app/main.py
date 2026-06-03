@@ -40,7 +40,7 @@ _bot_manually_stopped = False   # True quando o usuário parou manualmente
 async def _watchdog_loop():
     """Reativa o bot apenas se ele crashou — não reinicia se foi parado pelo usuário."""
     while True:
-        await asyncio.sleep(90)
+        await asyncio.sleep(30)
         if not BOT_AUTOSTART or _bot_manually_stopped:
             continue
         try:
