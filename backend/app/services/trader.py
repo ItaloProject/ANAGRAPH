@@ -134,9 +134,10 @@ class TradingBot:
             base_adx=analyzer_min_adx,
         )
 
-        self.candles:     deque = deque(maxlen=300)
-        self.candles_h1:  deque = deque(maxlen=200)
-        self.candles_h4:  deque = deque(maxlen=150)
+        self.candles:        deque = deque(maxlen=300)
+        self.candles_h1:     deque = deque(maxlen=200)
+        self.candles_h4:     deque = deque(maxlen=150)
+        self.candles_usdjpy: deque = deque(maxlen=200)
         self.trades:      list[TradeRecord] = []
         self.running      = False
         self._tick_count  = 0
@@ -167,6 +168,7 @@ class TradingBot:
         self._news_context: dict = {}
         self._news_refresh_counter = 0
         self._brl_rate: float = 5.85
+        self._daily_report_sent_date: str = ""
 
     def _rebuild_stats_from_trades(self):
         """Recalcula stats do dia a partir da lista de trades (sem duplicar contagem)."""
@@ -288,6 +290,14 @@ class TradingBot:
                 self.candles_h4.append(c)
             logger.info(f"Loaded {len(self.candles_h4)} candles (H4)")
 
+            try:
+                hist_usdjpy = await self.client.get_candles("frxUSDJPY", 900, 200)
+                for c in hist_usdjpy:
+                    self.candles_usdjpy.append(c)
+                logger.info(f"Loaded {len(self.candles_usdjpy)} candles (USD/JPY — DXY proxy)")
+            except Exception as e:
+                logger.warning(f"USD/JPY fetch failed: {e}")
+
             await self.client.subscribe_ticks(self.symbol, self._on_tick)
             logger.info(f"Subscribed to ticks for {self.symbol}")
 
@@ -302,10 +312,12 @@ class TradingBot:
                     await self.reconcile_open_trades()
                     if self.on_stats:
                         asyncio.create_task(self.on_stats(self.risk.summary))
-                if self._htf_counter % 180 == 0:  # ~15min — refresh H1
+                if self._htf_counter % 180 == 0:  # ~15min — refresh H1 + USDJPY
                     await self._refresh_htf_candles(h4=False)
+                    await self._refresh_usdjpy()
                 if self._htf_counter % 720 == 0:  # ~60min — refresh H4
                     await self._refresh_htf_candles(h4=True)
+                await self._check_daily_report()
                 if self.client.authorized and self.client._trade_ws is not None:
                     try:
                         ws = self.client._trade_ws
@@ -327,6 +339,35 @@ class TradingBot:
         except Exception as e:
             logger.error(f"Bot FATAL ERROR: {type(e).__name__}: {e}", exc_info=True)
             self.running = False
+
+    async def _refresh_usdjpy(self):
+        try:
+            hist = await self.client.get_candles("frxUSDJPY", 900, 200)
+            self.candles_usdjpy.clear()
+            for c in hist:
+                self.candles_usdjpy.append(c)
+        except Exception as e:
+            logger.warning(f"USD/JPY refresh failed: {e}")
+
+    async def _check_daily_report(self):
+        """Envia relatório diário via Telegram após o fechamento da sessão NY (20:30 UTC)."""
+        if not self.telegram:
+            return
+        from datetime import timezone as _tz
+        now = datetime.now(_tz.utc)
+        today_str = now.strftime("%Y-%m-%d")
+        if today_str == self._daily_report_sent_date:
+            return
+        if now.hour == 20 and now.minute >= 30:
+            stats = self.risk.summary
+            await self.telegram.notify_daily_summary(
+                wins=stats["wins"],
+                losses=stats["losses"],
+                pnl_usd=stats["pnl"],
+                brl_rate=self._brl_rate,
+            )
+            self._daily_report_sent_date = today_str
+            logger.info("Daily report sent via Telegram")
 
     async def _refresh_htf_candles(self, h4: bool = False):
         try:
@@ -417,6 +458,7 @@ class TradingBot:
             list(self.candles_h1),
             list(self.candles_h4),
             tick_flow=flow,
+            candles_usdjpy=list(self.candles_usdjpy),
         )
 
         # ── Notícias + sentimento (refresh a cada ~25 análises ≈ 5min) ────
@@ -504,8 +546,9 @@ class TradingBot:
                 "news": self._news_context,
                 "learning_label": learning_label,
                 "learning": self.learning.stats(),
-                "vwap":      round(result.vwap, 5),
-                "fib_level": result.fib_level,
+                "vwap":        round(result.vwap, 5),
+                "fib_level":   result.fib_level,
+                "usd_strength": self.analyzer._usd_strength(list(self.candles_usdjpy)) if self.candles_usdjpy else "NEUTRAL",
             }
             self.last_signal = signal_payload
             asyncio.create_task(self.on_signal(signal_payload))

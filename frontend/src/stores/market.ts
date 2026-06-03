@@ -148,6 +148,23 @@ export const useMarketStore = defineStore('market', () => {
     atr_ratio:   1.0 as number,
     patterns:    [] as string[],
     divergences: [] as string[],
+    // IA avançada
+    vwap:         0 as number,
+    fib_level:    '' as string,
+    usd_strength: 'NEUTRAL' as string,
+    tick_flow: null as null | {
+      velocity: number; momentum: number; imbalance: number
+      smoothness: number; buy_pts: number; sell_pts: number
+    },
+    news: null as null | {
+      sentiment: string; sentiment_score: number; risk_level: string
+      recommendation: string; reason: string; high_impact_soon: boolean
+      key_factor: string; events: any[]; headlines_count: number
+    },
+    learning: null as null | {
+      total_recorded: number; win_rate: number; model_trained: boolean; sample_count: number
+    },
+    learning_label: '' as string,
   })
 
   function updateIndicators(data: Record<string, any>) {
@@ -171,6 +188,13 @@ export const useMarketStore = defineStore('market', () => {
       atr_ratio:       data.atr_ratio ?? 1.0,
       patterns:        Array.isArray(data.patterns)    ? data.patterns    : [],
       divergences:     Array.isArray(data.divergences) ? data.divergences : [],
+      vwap:            data.vwap ?? 0,
+      fib_level:       data.fib_level ?? '',
+      usd_strength:    data.usd_strength ?? 'NEUTRAL',
+      tick_flow:       data.tick_flow ?? null,
+      news:            data.news && Object.keys(data.news).length ? data.news : null,
+      learning:        data.learning ?? null,
+      learning_label:  data.learning_label ?? '',
     }
   }
 

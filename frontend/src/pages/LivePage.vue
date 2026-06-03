@@ -256,6 +256,108 @@
       </div>
     </div>
 
+    <!-- ── Painel de Inteligência IA ── -->
+    <div class="ai-panel q-mb-md" v-if="ind.tick_flow || ind.news || ind.learning">
+      <div class="ai-panel-header">
+        <q-icon name="psychology" size="14px" color="cyan" />
+        <span>INTELIGÊNCIA IA</span>
+        <span v-if="ind.learning_label" class="ai-learn-badge">{{ ind.learning_label }}</span>
+      </div>
+
+      <div class="ai-grid">
+
+        <!-- Notícias -->
+        <div class="ai-card" :class="ind.news ? `news-${(ind.news.recommendation||'OK').toLowerCase()}` : ''">
+          <div class="ai-card-label">NOTÍCIAS / MACRO</div>
+          <template v-if="ind.news">
+            <div class="ai-sentiment-row">
+              <span class="sentiment-badge" :class="`sent-${ind.news.sentiment}`">
+                {{ ind.news.sentiment === 'bullish' ? '📈 ALTA' : ind.news.sentiment === 'bearish' ? '📉 BAIXA' : '➡ NEUTRO' }}
+              </span>
+              <span class="sentiment-score" :class="ind.news.sentiment_score > 0 ? 'text-neon-green' : ind.news.sentiment_score < 0 ? 'text-neon-red' : 'text-muted'">
+                {{ ind.news.sentiment_score > 0 ? '+' : '' }}{{ ind.news.sentiment_score }}
+              </span>
+            </div>
+            <div class="ai-rec" :class="`rec-${(ind.news.recommendation||'OK').toLowerCase()}`">
+              {{ ind.news.recommendation }} · risco {{ ind.news.risk_level }}
+            </div>
+            <div class="ai-sub" v-if="ind.news.reason">{{ ind.news.reason }}</div>
+            <div class="ai-event" v-if="ind.news.high_impact_soon">
+              ⚡ Evento iminente!
+            </div>
+            <div class="ai-event" v-for="ev in (ind.news.events || []).slice(0, 2)" :key="ev.event">
+              {{ ev.currency }} {{ ev.event }} ({{ ev.minutes_away }}min)
+            </div>
+          </template>
+          <div v-else class="ai-sub text-muted">Configure ANTHROPIC_API_KEY no servidor</div>
+        </div>
+
+        <!-- Aprendizado -->
+        <div class="ai-card">
+          <div class="ai-card-label">APRENDIZADO IA</div>
+          <template v-if="ind.learning && ind.learning.model_trained">
+            <div class="ai-wp-row">
+              <span class="text-muted" style="font-size:11px;">Win Prob.</span>
+              <span class="ai-wp-val" :class="ind.learning.win_rate >= 60 ? 'text-neon-green' : ind.learning.win_rate >= 50 ? 'text-neon-cyan' : 'text-neon-red'">
+                {{ ind.learning.win_rate.toFixed(1) }}%
+              </span>
+            </div>
+            <div class="ai-bar">
+              <div class="ai-bar-fill" :style="{
+                width: ind.learning.win_rate + '%',
+                background: ind.learning.win_rate >= 60 ? 'var(--accent-green)' : ind.learning.win_rate >= 50 ? 'var(--accent-cyan)' : 'var(--accent-red)'
+              }" />
+            </div>
+            <div class="ai-sub">{{ ind.learning.total_recorded }} amostras registradas</div>
+          </template>
+          <template v-else-if="ind.learning">
+            <div class="ai-sub text-muted">Coletando amostras...</div>
+            <div class="ai-sub">{{ ind.learning.total_recorded }} / 20 para treinamento</div>
+          </template>
+          <div v-else class="ai-sub text-muted">Sem dados ainda</div>
+        </div>
+
+        <!-- Tick Flow -->
+        <div class="ai-card">
+          <div class="ai-card-label">FLUXO DE MERCADO</div>
+          <template v-if="ind.tick_flow">
+            <div class="flow-pressure-bar">
+              <div class="flow-sell-fill" :style="{width: ((1 - ind.tick_flow.imbalance) * 100).toFixed(0) + '%'}" />
+              <div class="flow-buy-fill"  :style="{width: (ind.tick_flow.imbalance * 100).toFixed(0) + '%'}" />
+            </div>
+            <div class="flow-labels">
+              <span class="text-neon-red" style="font-size:10px;">VENDA {{ ((1-ind.tick_flow.imbalance)*100).toFixed(0) }}%</span>
+              <span class="text-neon-green" style="font-size:10px;">COMPRA {{ (ind.tick_flow.imbalance*100).toFixed(0) }}%</span>
+            </div>
+            <div class="ai-sub q-mt-xs">
+              Mom: <span :class="ind.tick_flow.momentum > 0 ? 'text-neon-green' : 'text-neon-red'">{{ ind.tick_flow.momentum > 0 ? '+' : '' }}{{ (ind.tick_flow.momentum * 100).toFixed(3) }}%</span>
+              · Vel: {{ ind.tick_flow.velocity }}tk/s
+            </div>
+          </template>
+          <div v-else class="ai-sub text-muted">Aguardando ticks...</div>
+        </div>
+
+      </div>
+
+      <!-- Footer: VWAP + Fib + DXY -->
+      <div class="ai-footer" v-if="ind.vwap || ind.fib_level || ind.usd_strength !== 'NEUTRAL'">
+        <div class="ai-footer-item" v-if="ind.vwap">
+          <span class="text-muted">VWAP</span>
+          <span class="font-mono text-neon-cyan">{{ ind.vwap.toFixed(5) }}</span>
+        </div>
+        <div class="ai-footer-item" v-if="ind.fib_level">
+          <span class="text-muted">Fibonacci</span>
+          <span class="text-neon-amber font-mono">{{ ind.fib_level }}</span>
+        </div>
+        <div class="ai-footer-item" v-if="ind.usd_strength !== 'NEUTRAL'">
+          <span class="text-muted">DXY (USD)</span>
+          <span :class="ind.usd_strength === 'STRONG' ? 'text-neon-red' : 'text-neon-green'">
+            {{ ind.usd_strength === 'STRONG' ? 'FORTE ↑' : 'FRACO ↓' }}
+          </span>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Posição Aberta ── -->
     <div class="q-mb-md">
       <div v-if="openTrade" class="open-position animate-float">
@@ -431,6 +533,9 @@ const bot         = useBotStore()
 const marketStore = useMarketStore()
 const analyzing   = ref(false)
 const refreshing  = ref(false)
+
+// Atalho para liveIndicators (usado no painel de IA)
+const ind = computed(() => marketStore.liveIndicators)
 
 // ── Sparkline ──────────────────────────────────────────────────────────────
 const sparkW = 120
@@ -683,6 +788,86 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss" scoped>
+
+// ── AI Intelligence Panel ─────────────────────────────────────────────────────
+.ai-panel {
+  background: var(--bg-surface);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.ai-panel-header {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-muted); text-transform: uppercase;
+  margin-bottom: 12px;
+  .ai-learn-badge {
+    margin-left: auto; font-size: 10px; font-weight: 600;
+    color: var(--accent-cyan); background: rgba(0,212,255,0.1);
+    border-radius: 4px; padding: 1px 6px;
+  }
+}
+.ai-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  @media (max-width: 699px) { grid-template-columns: 1fr; }
+}
+.ai-card {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+  &.news-avoid  { border-color: rgba(255,68,102,0.4); background: rgba(255,68,102,0.04); }
+  &.news-caution{ border-color: rgba(255,184,0,0.3);  background: rgba(255,184,0,0.03); }
+  &.news-ok     { border-color: rgba(0,255,136,0.2);  background: rgba(0,255,136,0.03); }
+}
+.ai-card-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;
+}
+.ai-sentiment-row {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;
+}
+.sentiment-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+  &.sent-bullish { background: rgba(0,255,136,0.15); color: var(--accent-green); }
+  &.sent-bearish { background: rgba(255,68,102,0.15); color: var(--accent-red); }
+  &.sent-neutral { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+}
+.sentiment-score { font-size: 13px; font-weight: 700; font-family: monospace; }
+.ai-rec {
+  font-size: 10px; font-weight: 600; margin-bottom: 4px;
+  &.rec-ok     { color: var(--accent-green); }
+  &.rec-caution{ color: var(--accent-amber); }
+  &.rec-avoid  { color: var(--accent-red); }
+}
+.ai-sub  { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
+.ai-event { font-size: 10px; color: var(--accent-amber); margin-top: 3px; }
+.ai-wp-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+.ai-wp-val { font-size: 18px; font-weight: 700; font-family: monospace; }
+.ai-bar {
+  height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px;
+  overflow: hidden; margin-bottom: 5px;
+}
+.ai-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s; }
+.flow-pressure-bar {
+  display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin-bottom: 5px;
+}
+.flow-sell-fill { background: var(--accent-red); transition: width 0.5s; }
+.flow-buy-fill  { background: var(--accent-green); transition: width 0.5s; }
+.flow-labels { display: flex; justify-content: space-between; }
+.ai-footer {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+.ai-footer-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px;
+  .font-mono { font-family: monospace; font-weight: 600; }
+}
+
 .live-page {
   background: var(--bg-deep);
   min-height: 100vh;

@@ -545,6 +545,70 @@ class AnalyzerService:
 
         return buy_pts, sell_pts, reasons
 
+    def _detect_supply_demand(
+        self,
+        df: pd.DataFrame,
+        lookback: int = 80,
+    ) -> tuple[int, int, list[str]]:
+        """
+        Supply & Demand zones — mais preciso que Order Blocks.
+
+        Demand zone: consolidação antes de impulso altista (compradores deixaram ordens)
+        Supply zone:  consolidação antes de impulso baixista (vendedores deixaram ordens)
+
+        Algoritmo:
+          1. Encontra velas "base" (corpo pequeno = consolidação)
+          2. Verifica impulso forte logo após (≥ 3× o corpo da base)
+          3. Delimita a zona pelo range da base
+          4. Score se preço atual retornou à zona (oportunidade de entrada)
+        """
+        n = len(df)
+        if n < lookback + 10:
+            return 0, 0, []
+
+        o = df["open"].values
+        h = df["high"].values
+        l = df["low"].values
+        c = df["close"].values
+        price = c[-1]
+
+        buy_pts = sell_pts = 0
+        reasons: list[str] = []
+
+        scan_start = max(5, n - lookback)
+
+        for i in range(scan_start, n - 6):
+            body  = abs(c[i] - o[i])
+            range_ = h[i] - l[i]
+
+            # Precisa ser vela de consolidação (corpo < 40% do range)
+            if range_ < 0.00005 or body < 0.000008 or (body / range_ > 0.45):
+                continue
+
+            # Impulso nos próximos 4 candles
+            next_end  = min(i + 5, n)
+            next_move = c[next_end - 1] - c[i]
+            if abs(next_move) < body * 2.5:   # impulso precisa ser 2.5× a base
+                continue
+
+            zone_top = h[i]
+            zone_bot = l[i]
+
+            if next_move > 0:
+                # Zona de DEMANDA — impulso de alta saiu daqui
+                if zone_bot <= price <= zone_top:
+                    buy_pts += 2
+                    reasons.append(f"Zona de demanda ({zone_bot:.5f}–{zone_top:.5f})")
+                    break
+            else:
+                # Zona de OFERTA — impulso de baixa saiu daqui
+                if zone_bot <= price <= zone_top:
+                    sell_pts += 2
+                    reasons.append(f"Zona de oferta ({zone_bot:.5f}–{zone_top:.5f})")
+                    break
+
+        return buy_pts, sell_pts, reasons
+
     def _compute_vwap(self, df: pd.DataFrame, window: int = 48) -> float:
         """
         Rolling VWAP de 12h (48 candles M15).
@@ -819,6 +883,12 @@ class AnalyzerService:
         sell_score += fvg_sell
         reasons.extend(fvg_reasons)
 
+        # ── Supply & Demand zones (max +2 each side) ──────────────────────
+        sd_buy, sd_sell, sd_reasons = self._detect_supply_demand(df)
+        buy_score  += sd_buy
+        sell_score += sd_sell
+        reasons.extend(sd_reasons)
+
         # ── VWAP (max +1 each side) ───────────────────────────────────────
         vwap = self._compute_vwap(df)
         if vwap > 0:
@@ -938,12 +1008,36 @@ class AnalyzerService:
         if bear >= 4: return "BEAR"
         return "NEUTRAL"
 
+    def _usd_strength(self, candles_usdjpy: list[dict]) -> str:
+        """
+        Estima força do USD via USD/JPY (proxy do DXY).
+        EUR/USD e DXY são inversamente correlacionados (~-0.90).
+
+        Retorna: "STRONG" (USD forte = vender EURUSD),
+                 "WEAK"   (USD fraco = comprar EURUSD),
+                 "NEUTRAL".
+        """
+        if len(candles_usdjpy) < 50:
+            return "NEUTRAL"
+        df    = pd.DataFrame(candles_usdjpy)
+        df.columns = [col.lower() for col in df.columns]
+        close = df["close"]
+        e9    = float(ta.trend.EMAIndicator(close, window=9).ema_indicator().iloc[-1])
+        e21   = float(ta.trend.EMAIndicator(close, window=21).ema_indicator().iloc[-1])
+        e50   = float(ta.trend.EMAIndicator(close, window=50).ema_indicator().iloc[-1])
+        price = float(close.iloc[-1])
+        bull  = (price > e50) + (e9 > e21) + (e9 > e50)
+        if bull >= 3:   return "STRONG"
+        if bull == 0:   return "WEAK"
+        return "NEUTRAL"
+
     def analyze_mtf(
         self,
         candles_primary: list[dict],
         candles_h1: list[dict],
         candles_h4: list[dict],
         tick_flow: Optional["FlowState"] = None,
+        candles_usdjpy: Optional[list[dict]] = None,
     ) -> AnalysisResult:
         """
         Multi-timeframe analysis:
@@ -999,6 +1093,25 @@ class AnalyzerService:
             result.reason     = f"[MTF✓ H1:{h1_bias} H4:{h4_bias}] {result.reason}"
         else:
             result.reason = f"[MTF~ H1:{h1_bias} H4:{h4_bias}] {result.reason}"
+
+        # ── DXY / USD Strength (correlação via USD/JPY) ──────────────────
+        usd_str = self._usd_strength(candles_usdjpy) if candles_usdjpy else "NEUTRAL"
+        result.reason = f"[DXY:{usd_str}] {result.reason}" if usd_str != "NEUTRAL" else result.reason
+
+        if result.signal == "BUY" and usd_str == "WEAK":
+            result.confidence = min(97.0, round(result.confidence + 4.0, 1))
+        elif result.signal == "SELL" and usd_str == "STRONG":
+            result.confidence = min(97.0, round(result.confidence + 4.0, 1))
+        elif result.signal == "BUY" and usd_str == "STRONG":
+            result.confidence = max(0.0, round(result.confidence - 6.0, 1))
+            if result.confidence < 78:
+                result.signal = "WAIT"
+                result.reason = f"DXY forte bloqueia compra EUR/USD | {result.reason}"
+        elif result.signal == "SELL" and usd_str == "WEAK":
+            result.confidence = max(0.0, round(result.confidence - 6.0, 1))
+            if result.confidence < 78:
+                result.signal = "WAIT"
+                result.reason = f"DXY fraco bloqueia venda EUR/USD | {result.reason}"
 
         # ── Tick Flow (mercado em tempo real) ─────────────────────────────
         if tick_flow is not None and (tick_flow.buy_pts > 0 or tick_flow.sell_pts > 0):
