@@ -183,6 +183,7 @@ class TradingBot:
         self._news_refresh_counter = 0
         self._brl_rate: float = 5.85
         self._daily_report_sent_date: str = ""
+        self._last_tick_at: float = 0.0          # timestamp do último tick recebido
 
     def _rebuild_stats_from_trades(self):
         """Recalcula stats do dia a partir da lista de trades (sem duplicar contagem)."""
@@ -343,6 +344,7 @@ class TradingBot:
                 if self._htf_counter % 720 == 0:  # ~60min — refresh H4
                     await self._refresh_htf_candles(h4=True)
                 await self._check_daily_report()
+                # ── Reconexão Trade WS ───────────────────────────────────────
                 if self.client.authorized and self.client._trade_ws is not None:
                     try:
                         ws = self.client._trade_ws
@@ -359,7 +361,38 @@ class TradingBot:
                             asyncio.create_task(self.client._recv_from(self.client._trade_ws))
                             logger.info("Trade WS reconnected")
                     except Exception as e:
-                        logger.error(f"Reconnect check failed: {e}")
+                        logger.error(f"Trade WS reconnect failed: {e}")
+
+                # ── Reconexão Public WS (ticks) ──────────────────────────────
+                # Se o WS público cair, os ticks param silenciosamente.
+                # Detecta pelo tempo desde o último tick recebido.
+                tick_silence_sec = time.time() - self._last_tick_at
+                max_silence      = self.granularity * 3   # 3× o candle period
+                if self._last_tick_at > 0 and tick_silence_sec > max_silence:
+                    logger.warning(
+                        f"Sem ticks há {tick_silence_sec:.0f}s — reconectando Public WS..."
+                    )
+                    try:
+                        import websockets as _ws
+                        if self.client._public_ws:
+                            try: await self.client._public_ws.close()
+                            except Exception: pass
+                        self.client._public_ws = await _ws.connect(
+                            self.client.WS_PUBLIC, ping_interval=30
+                        )
+                        asyncio.create_task(self.client._recv_from(self.client._public_ws))
+                        await self.client.subscribe_ticks(self.symbol, self._on_tick)
+                        self._last_tick_at = time.time()
+                        logger.info("Public WS reconectado — ticks reinscritos")
+                    except Exception as e:
+                        logger.error(f"Public WS reconnect failed: {e}")
+
+                # ── Reset periódico de contadores ────────────────────────────
+                # Evita inteiros muito grandes após dias de operação
+                if self._htf_counter >= 100_000:
+                    self._htf_counter = 0
+                if self._reconcile_counter >= 100_000:
+                    self._reconcile_counter = 0
 
         except Exception as e:
             logger.error(f"Bot FATAL ERROR: {type(e).__name__}: {e}", exc_info=True)
@@ -517,6 +550,7 @@ class TradingBot:
             })
 
         self.tick_flow.push(price, float(epoch))
+        self._last_tick_at = time.time()
 
         if self.on_tick:
             asyncio.create_task(self.on_tick({"price": price, "epoch": epoch}))

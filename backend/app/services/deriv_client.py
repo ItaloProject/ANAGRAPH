@@ -16,6 +16,7 @@ APP_ID    = os.getenv("DERIV_APP_ID", "33qwHdRH3vY9cCAeAzIa7")
 
 
 class DerivClient:
+    WS_PUBLIC = WS_PUBLIC   # expõe a constante para reconexão externa
     """
     DERIV REST + WebSocket API client.
     Uses api.derivws.com (new Deriv platform):
