@@ -5,20 +5,22 @@
   "productName": "ANAGRAPH",
   "scripts": {
     "dev": "quasar dev",
-    "build": "quasar build",
+    "build": "quasar build -m pwa",
+    "build:spa": "quasar build",
     "lint": "eslint --ext .js,.ts,.vue ./src"
   },
   "dependencies": {
     "@quasar/extras": "^1.16.0",
     "axios": "^1.6.0",
+    "gsap": "^3.12.0",
+    "lightweight-charts": "^4.1.0",
     "pinia": "^2.1.0",
     "quasar": "^2.14.0",
     "vue": "^3.4.0",
-    "vue-router": "^4.2.0",
-    "lightweight-charts": "^4.1.0",
-    "gsap": "^3.12.0"
+    "vue-router": "^4.2.0"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.0.0",
     "@quasar/app-vite": "^2.0.0",
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
