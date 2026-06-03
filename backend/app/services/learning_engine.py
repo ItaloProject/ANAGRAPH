@@ -227,9 +227,11 @@ class LearningEngine:
             ph   = self._ph()
             conn = self._get_conn()
             try:
-                cur   = conn.cursor()
-                total = cur.execute("SELECT COUNT(*) FROM signal_history WHERE outcome IS NOT NULL").fetchone()[0]
-                wins  = cur.execute(f"SELECT COUNT(*) FROM signal_history WHERE outcome={ph}", ("WIN",)).fetchone()[0]
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM signal_history WHERE outcome IS NOT NULL")
+                total = cur.fetchone()[0]
+                cur.execute(f"SELECT COUNT(*) FROM signal_history WHERE outcome={ph}", ("WIN",))
+                wins = cur.fetchone()[0]
             finally:
                 conn.close()
             return {
@@ -249,7 +251,8 @@ class LearningEngine:
         try:
             conn = self._get_conn()
             try:
-                rows = conn.cursor().execute("""
+                cur = conn.cursor()
+                cur.execute("""
                     SELECT rsi, macd_hist, adx, atr_ratio,
                            buy_score, sell_score,
                            patterns_count, divergences_count, bb_pos,
@@ -257,7 +260,8 @@ class LearningEngine:
                     FROM signal_history
                     WHERE outcome IS NOT NULL AND signal != 'WAIT'
                     ORDER BY id DESC LIMIT 500
-                """).fetchall()
+                """)
+                rows = cur.fetchall()
             finally:
                 conn.close()
 
