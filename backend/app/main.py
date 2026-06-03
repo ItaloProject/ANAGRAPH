@@ -133,7 +133,7 @@ def _enforce_conservative(req: BotStartRequest) -> BotStartRequest:
     req.cooldown_after_loss_sec = max(req.cooldown_after_loss_sec, 300)
     req.analyzer_min_score = max(req.analyzer_min_score, 5)
     req.analyzer_min_gap = max(req.analyzer_min_gap, 2)
-    req.analyzer_min_adx = max(req.analyzer_min_adx, 22.0)
+    req.analyzer_min_adx = max(req.analyzer_min_adx, 18.0)  # piso mínimo absoluto
     req.analyze_every = max(req.analyze_every, 15)
     return req
 
