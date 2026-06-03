@@ -1056,31 +1056,38 @@ class AnalyzerService:
         if result.signal == "WAIT":
             return result
 
-        # ── H4 hard block (macro trend contra-sinal) ─────────────────────
-        if result.signal == "BUY" and h4_bias == "BEAR":
+        # ── H4 macro trend filter ────────────────────────────────────────
+        # Contra-tendência H4: penaliza confiança fortemente (-25%).
+        # Sinal só passa se ainda ficar >= 78% depois da penalidade.
+        # Hard block (cancelamento total) é reservado para confluência
+        # H4 + H1 ambos contra o sinal.
+        h4_against = (result.signal == "BUY" and h4_bias == "BEAR") or \
+                     (result.signal == "SELL" and h4_bias == "BULL")
+        h1_against = (result.signal == "BUY" and h1_bias == "BEAR") or \
+                     (result.signal == "SELL" and h1_bias == "BULL")
+
+        if h4_against and h1_against:
+            # Ambos contra: hard block (impossível passar)
             result.signal     = "WAIT"
-            result.confidence = round(result.confidence * 0.4, 1)
-            result.reason     = f"MTF BLOQUEADO — H4 em baixa | {result.reason}"
+            result.confidence = round(result.confidence * 0.35, 1)
+            result.reason     = f"MTF BLOQUEADO — H4:{h4_bias} + H1:{h1_bias} ambos contra | {result.reason}"
             return result
 
-        if result.signal == "SELL" and h4_bias == "BULL":
-            result.signal     = "WAIT"
-            result.confidence = round(result.confidence * 0.4, 1)
-            result.reason     = f"MTF BLOQUEADO — H4 em alta | {result.reason}"
-            return result
+        if h4_against:
+            # Só H4 contra: penaliza -30%, mas pode passar se confluência for forte
+            result.confidence = round(result.confidence * 0.70, 1)
+            result.reason     = f"[MTF⚠ H4:{h4_bias}] {result.reason}"
+            if result.confidence < 78:
+                result.signal = "WAIT"
+                return result
 
-        # ── H1 secondary filter ───────────────────────────────────────────
-        if result.signal == "BUY" and h1_bias == "BEAR":
-            result.signal     = "WAIT"
-            result.confidence = round(result.confidence * 0.6, 1)
-            result.reason     = f"MTF BLOQUEADO — H1 em baixa | {result.reason}"
-            return result
-
-        if result.signal == "SELL" and h1_bias == "BULL":
-            result.signal     = "WAIT"
-            result.confidence = round(result.confidence * 0.6, 1)
-            result.reason     = f"MTF BLOQUEADO — H1 em alta | {result.reason}"
-            return result
+        elif h1_against:
+            # Só H1 contra: penaliza -20%
+            result.confidence = round(result.confidence * 0.80, 1)
+            result.reason     = f"[MTF⚠ H1:{h1_bias}] {result.reason}"
+            if result.confidence < 78:
+                result.signal = "WAIT"
+                return result
 
         # ── Alignment bonus ───────────────────────────────────────────────
         full_align = (
@@ -1098,20 +1105,22 @@ class AnalyzerService:
         usd_str = self._usd_strength(candles_usdjpy) if candles_usdjpy else "NEUTRAL"
         result.reason = f"[DXY:{usd_str}] {result.reason}" if usd_str != "NEUTRAL" else result.reason
 
+        # DXY: bônus quando alinhado, penalidade suave quando contra
         if result.signal == "BUY" and usd_str == "WEAK":
             result.confidence = min(97.0, round(result.confidence + 4.0, 1))
         elif result.signal == "SELL" and usd_str == "STRONG":
             result.confidence = min(97.0, round(result.confidence + 4.0, 1))
         elif result.signal == "BUY" and usd_str == "STRONG":
-            result.confidence = max(0.0, round(result.confidence - 6.0, 1))
+            # USD forte vai contra compra — penaliza mas não bloqueia sozinho
+            result.confidence = max(0.0, round(result.confidence - 4.0, 1))
             if result.confidence < 78:
                 result.signal = "WAIT"
-                result.reason = f"DXY forte bloqueia compra EUR/USD | {result.reason}"
+                result.reason = f"[DXY FORTE] conf insuficiente | {result.reason}"
         elif result.signal == "SELL" and usd_str == "WEAK":
-            result.confidence = max(0.0, round(result.confidence - 6.0, 1))
+            result.confidence = max(0.0, round(result.confidence - 4.0, 1))
             if result.confidence < 78:
                 result.signal = "WAIT"
-                result.reason = f"DXY fraco bloqueia venda EUR/USD | {result.reason}"
+                result.reason = f"[DXY FRACO] conf insuficiente | {result.reason}"
 
         # ── Tick Flow (mercado em tempo real) ─────────────────────────────
         if tick_flow is not None and (tick_flow.buy_pts > 0 or tick_flow.sell_pts > 0):
