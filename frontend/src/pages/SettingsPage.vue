@@ -127,7 +127,9 @@
 
           <div class="setting-row q-mb-sm">
             <span class="row-label">Ativo</span>
-            <span class="text-neon-cyan text-weight-bold font-mono">EUR/USD</span>
+            <span class="text-neon-cyan text-weight-bold font-mono">
+              {{ config.auto_asset ? 'Auto (EUR/USD · USD/JPY)' : 'EUR/USD' }}
+            </span>
           </div>
           <div class="setting-row q-mb-sm">
             <span class="row-label">Timeframe</span>
@@ -145,7 +147,25 @@
             </div>
           </div>
 
-          <div class="q-mb-sm">
+          <!-- Multi-ativo automático -->
+          <div class="auto-asset-box q-mb-sm">
+            <div class="row items-center justify-between">
+              <div>
+                <div class="row-label text-weight-bold">Multi-ativo automático (24h)</div>
+                <div class="text-caption text-muted">Opera o par certo para cada sessão</div>
+              </div>
+              <q-toggle v-model="config.auto_asset" color="cyan" />
+            </div>
+            <div v-if="config.auto_asset" class="auto-asset-detail q-mt-xs">
+              <q-icon name="schedule" size="12px" color="cyan" />
+              <span class="text-caption text-muted">
+                <b class="text-neon-cyan">EUR/USD</b> em London/NY (07–20:30 UTC) ·
+                <b class="text-neon-cyan">USD/JPY</b> na sessão asiática (volume real de Tóquio)
+              </span>
+            </div>
+          </div>
+
+          <div class="q-mb-sm" v-if="!config.auto_asset">
             <div class="row-label q-mb-xs">Horário de operação</div>
             <q-btn-toggle v-model="config.session_mode"
               :options="sessionModes"
@@ -511,6 +531,17 @@ onMounted(async () => {
   padding: 12px 14px; border-radius: 10px;
   background: rgba(0,255,136,0.06);
   border: 1px solid rgba(0,255,136,0.2);
+}
+
+// ── Auto-asset box ────────────────────────────────────────────────────────────
+.auto-asset-box {
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(0,212,255,0.05);
+  border: 1px solid rgba(0,212,255,0.15);
+}
+.auto-asset-detail {
+  display: flex; align-items: flex-start; gap: 6px;
+  padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.05);
 }
 
 // ── Setting row ───────────────────────────────────────────────────────────────

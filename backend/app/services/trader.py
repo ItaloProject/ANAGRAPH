@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from collections import deque
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Callable, Optional
 
 from app.services.analyzer import AnalyzerService, AnalysisResult
@@ -23,6 +23,14 @@ SYMBOL_MAP = {
     "BTC/USD": "cryBTCUSD",
     "Volatility 75": "R_75",
     "Boom 1000":    "BOOM1000",
+}
+
+# Ativo ideal por sessão (modo multi-ativo / auto_asset).
+# London/NY: pares EUR têm volume institucional.
+# Asiático:  USD/JPY tem volume real (sessão de Tóquio).
+SESSION_PRIMARY_ASSET = {
+    "london_ny": "EUR/USD",
+    "asian":     "USD/JPY",
 }
 
 # Rise/Fall on DERIV: CALL = Rise (Up), PUT = Fall (Down)
@@ -109,6 +117,7 @@ class TradingBot:
         anthropic_api_key: str = "",
         telegram_token: str = "",
         telegram_chat_id: str = "",
+        auto_asset: bool = False,
     ):
         self.api_token         = api_token
         self.app_id            = app_id
@@ -119,12 +128,17 @@ class TradingBot:
         self.contract_duration = contract_duration
         self.analyze_every     = analyze_every
 
+        self.auto_asset = auto_asset
+        self._switching = False
+
         self.client   = DerivClient(app_id=app_id, api_token=api_token, account_id=account_id)
         self.analyzer = AnalyzerService(
             min_score=analyzer_min_score,
             min_score_gap=analyzer_min_gap,
             min_adx=analyzer_min_adx,
-            session_mode=session_mode,
+            # Em modo multi-ativo o filtro de sessão é desligado: o ativo já é
+            # escolhido para a sessão atual, então pode operar 24h.
+            session_mode="all" if auto_asset else session_mode,
         )
         self.risk     = RiskManager(risk_config)
         self.adaptive = AdaptiveController(
@@ -270,8 +284,14 @@ class TradingBot:
         self.running = True
         try:
             await self.client.connect()
+
+            # Modo multi-ativo: escolhe o ativo ideal para a sessão atual
+            if self.auto_asset:
+                self.asset  = self._select_asset_for_now()
+                self.symbol = SYMBOL_MAP.get(self.asset, "frxEURUSD")
+
             logger.info(
-                f"Bot started | asset={self.asset} | "
+                f"Bot started | asset={self.asset} | auto_asset={self.auto_asset} | "
                 f"Rise/Fall {self.contract_duration}m | authorized={self.client.authorized}"
             )
 
@@ -290,13 +310,15 @@ class TradingBot:
                 self.candles_h4.append(c)
             logger.info(f"Loaded {len(self.candles_h4)} candles (H4)")
 
-            try:
-                hist_usdjpy = await self.client.get_candles("frxUSDJPY", 900, 200)
-                for c in hist_usdjpy:
-                    self.candles_usdjpy.append(c)
-                logger.info(f"Loaded {len(self.candles_usdjpy)} candles (USD/JPY — DXY proxy)")
-            except Exception as e:
-                logger.warning(f"USD/JPY fetch failed: {e}")
+            # DXY proxy só para pares não-JPY (se operar USD/JPY, seria circular)
+            if not self._is_jpy_pair():
+                try:
+                    hist_usdjpy = await self.client.get_candles("frxUSDJPY", 900, 200)
+                    for c in hist_usdjpy:
+                        self.candles_usdjpy.append(c)
+                    logger.info(f"Loaded {len(self.candles_usdjpy)} candles (USD/JPY — DXY proxy)")
+                except Exception as e:
+                    logger.warning(f"USD/JPY fetch failed: {e}")
 
             await self.client.subscribe_ticks(self.symbol, self._on_tick)
             logger.info(f"Subscribed to ticks for {self.symbol}")
@@ -312,9 +334,12 @@ class TradingBot:
                     await self.reconcile_open_trades()
                     if self.on_stats:
                         asyncio.create_task(self.on_stats(self.risk.summary))
+                if self.auto_asset and self._htf_counter % 12 == 0:  # ~60s — checa sessão
+                    await self._switch_asset(self._select_asset_for_now())
                 if self._htf_counter % 180 == 0:  # ~15min — refresh H1 + USDJPY
                     await self._refresh_htf_candles(h4=False)
-                    await self._refresh_usdjpy()
+                    if not self._is_jpy_pair():
+                        await self._refresh_usdjpy()
                 if self._htf_counter % 720 == 0:  # ~60min — refresh H4
                     await self._refresh_htf_candles(h4=True)
                 await self._check_daily_report()
@@ -339,6 +364,78 @@ class TradingBot:
         except Exception as e:
             logger.error(f"Bot FATAL ERROR: {type(e).__name__}: {e}", exc_info=True)
             self.running = False
+
+    # ── Multi-ativo por sessão (auto_asset) ───────────────────────────────────
+
+    def _current_session(self) -> str:
+        """Retorna 'london_ny' (07:00–20:30 UTC) ou 'asian' (resto)."""
+        now = datetime.now(timezone.utc)
+        hm  = now.hour * 60 + now.minute
+        in_london = 7  * 60 <= hm < 16 * 60
+        in_ny     = 13 * 60 <= hm < 20 * 60 + 30
+        return "london_ny" if (in_london or in_ny) else "asian"
+
+    def _select_asset_for_now(self) -> str:
+        return SESSION_PRIMARY_ASSET.get(self._current_session(), "EUR/USD")
+
+    def _is_jpy_pair(self) -> bool:
+        return "JPY" in self.asset
+
+    async def _switch_asset(self, new_asset: str):
+        """Troca o ativo operado de forma limpa (re-inscrição de ticks + candles)."""
+        if new_asset == self.asset or new_asset not in SYMBOL_MAP:
+            return
+        # Nunca troca com posição aberta — o contrato é do ativo antigo
+        if any(t.status == "OPEN" for t in self.trades) or self.risk.stats.open_positions > 0:
+            return
+
+        old = self.asset
+        self._switching = True
+        try:
+            await self.client.unsubscribe_ticks()
+
+            self.asset  = new_asset
+            self.symbol = SYMBOL_MAP[new_asset]
+            self.candles.clear()
+            self.candles_h1.clear()
+            self.candles_h4.clear()
+            self.tick_flow = TickFlowAnalyzer(buffer_size=300)
+
+            hist = await self.client.get_candles(self.symbol, self.granularity, 200)
+            for c in hist:
+                self.candles.append(c)
+            h1 = await self.client.get_candles(self.symbol, 3600, 200)
+            for c in h1:
+                self.candles_h1.append(c)
+            h4 = await self.client.get_candles(self.symbol, 14400, 150)
+            for c in h4:
+                self.candles_h4.append(c)
+
+            # DXY proxy (USD/JPY) só faz sentido para pares não-JPY
+            if self._is_jpy_pair():
+                self.candles_usdjpy.clear()
+            else:
+                await self._refresh_usdjpy()
+
+            await self.client.subscribe_ticks(self.symbol, self._on_tick)
+
+            logger.info(
+                f"Ativo trocado: {old} → {new_asset} "
+                f"(sessão {self._current_session()})"
+            )
+            if self.telegram:
+                asyncio.create_task(self.telegram.send(
+                    f"🔄 <b>ANAGRAPH — TROCA DE ATIVO</b>\n"
+                    f"{old} → {new_asset}\n"
+                    f"Sessão: {self._current_session()}"
+                ))
+        except Exception as e:
+            logger.error(f"Falha ao trocar de ativo: {e}", exc_info=True)
+            # Reverte para o ativo antigo em caso de erro
+            self.asset  = old
+            self.symbol = SYMBOL_MAP.get(old, "frxEURUSD")
+        finally:
+            self._switching = False
 
     async def _refresh_usdjpy(self):
         try:
@@ -391,7 +488,7 @@ class TradingBot:
         logger.info("Bot stopped")
 
     async def _on_tick(self, price: float, epoch: int):
-        if not self.running:
+        if not self.running or self._switching:
             return
         self._tick_count += 1
 
@@ -777,6 +874,8 @@ class TradingBot:
         return {
             "running":           self.running,
             "asset":             self.asset,
+            "auto_asset":        self.auto_asset,
+            "session":           self._current_session() if self.auto_asset else "",
             "contract_duration": self.contract_duration,
             "contract_mode":     "rise_fall",
             "trading_profile":   "conservative_precision",

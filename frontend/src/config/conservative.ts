@@ -19,6 +19,7 @@ export const CONSERVATIVE_PROFILE: Required<
     | 'analyzer_min_adx'
     | 'analyze_every'
     | 'session_mode'
+    | 'auto_asset'
   >
 > = {
   asset:                   'EUR/USD',
@@ -36,6 +37,7 @@ export const CONSERVATIVE_PROFILE: Required<
   analyzer_min_adx:        22.0,
   analyze_every:           15,
   session_mode:            'london_ny',
+  auto_asset:              false,
 }
 
 export function enforceConservative(cfg: BotConfig): BotConfig {
@@ -58,5 +60,6 @@ export function enforceConservative(cfg: BotConfig): BotConfig {
     analyze_every:           Math.max(cfg.analyze_every ?? p.analyze_every, p.analyze_every),
     limits_currency:         'BRL',
     session_mode:            cfg.session_mode ?? p.session_mode,
+    auto_asset:              cfg.auto_asset ?? p.auto_asset,
   }
 }

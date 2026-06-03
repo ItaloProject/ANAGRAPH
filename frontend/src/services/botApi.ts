@@ -21,6 +21,7 @@ export interface BotConfig {
   analyzer_min_adx?: number
   analyze_every?: number
   session_mode?: string
+  auto_asset?: boolean
 }
 
 export const botApi = {

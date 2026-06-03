@@ -120,6 +120,7 @@ class BotStartRequest(BaseModel):
     analyzer_min_adx: float = Field(default=22.0, ge=15.0, le=40.0)
     analyze_every: int = 15
     session_mode: str = "london_ny"  # "all"|"london_ny"|"london"|"new_york"|"asian"
+    auto_asset: bool = False         # multi-ativo por sessão (EUR/USD diurno, USD/JPY asiático)
 
 
 def _enforce_conservative(req: BotStartRequest) -> BotStartRequest:
@@ -180,6 +181,7 @@ async def _launch_bot(req: BotStartRequest) -> dict:
         anthropic_api_key=ANTHROPIC_API_KEY,
         telegram_token=TELEGRAM_TOKEN,
         telegram_chat_id=TELEGRAM_CHAT_ID,
+        auto_asset=req.auto_asset,
         on_signal=lambda d: _broadcast("signal", d),
         on_trade=lambda d: _broadcast("trade", d),
         on_tick=lambda d: _broadcast("tick", d),

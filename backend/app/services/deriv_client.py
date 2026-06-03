@@ -41,6 +41,7 @@ class DerivClient:
         self._contract_cbs:  dict[int, list[Callable]] = {}
         self._recv_task:     Optional[asyncio.Task] = None
         self._keepalive_task: Optional[asyncio.Task] = None
+        self._active_tick_symbol: Optional[str] = None
         self.authorized = False
 
     async def connect(self):
@@ -117,11 +118,21 @@ class DerivClient:
 
     async def subscribe_ticks(self, symbol: str, callback: Callable):
         self._tick_cbs.append(callback)
+        self._active_tick_symbol = symbol
         await self._send_public({
             "ticks":     symbol,
             "subscribe": 1,
             "req_id":    self._next_id(),
         })
+
+    async def unsubscribe_ticks(self):
+        """Cancela todas as inscrições de ticks (usado ao trocar de ativo)."""
+        try:
+            await self._send_public({"forget_all": "ticks"})
+        except Exception as e:
+            logger.warning(f"unsubscribe_ticks: {e}")
+        self._tick_cbs.clear()
+        self._active_tick_symbol = None
 
     async def get_proposal(
         self,
@@ -282,6 +293,11 @@ class DerivClient:
 
                 if "tick" in msg:
                     tick = msg["tick"]
+                    # Filtro defensivo: ignora ticks de símbolo diferente do ativo
+                    # (evita corromper candles durante troca de ativo por sessão)
+                    sym = tick.get("symbol")
+                    if self._active_tick_symbol and sym and sym != self._active_tick_symbol:
+                        continue
                     for cb in self._tick_cbs:
                         asyncio.create_task(cb(float(tick["quote"]), tick["epoch"]))
                     continue
