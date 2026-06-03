@@ -29,7 +29,10 @@
               <span>Candles históricos</span>
               <span class="param-val text-neon-cyan">{{ params.count }}</span>
             </div>
-            <q-slider v-model="params.count" :min="100" :max="1000" :step="50" color="cyan" dark />
+            <q-slider v-model="params.count" :min="100" :max="2000" :step="100" color="cyan" dark />
+            <div class="text-caption text-muted" style="font-size:9px;margin-top:2px;">
+              ≈ {{ Math.round(params.count * params.granularity / 86400) }} dias de histórico
+            </div>
           </div>
 
           <div class="param-block">
@@ -76,10 +79,37 @@
             :options="[{label:'M15',value:900},{label:'H1',value:3600}]"
           />
 
+          <q-separator dark class="q-my-md" />
+
+          <!-- MTF toggle -->
+          <div class="row items-center justify-between q-mb-sm">
+            <div>
+              <div class="param-row-label" style="margin-bottom:0;">
+                <span>Fidelidade MTF</span>
+              </div>
+              <div class="text-caption text-muted" style="font-size:9px;">H1/H4 + DXY (igual ao bot)</div>
+            </div>
+            <q-toggle v-model="params.use_mtf" color="cyan" dense />
+          </div>
+
+          <!-- Grid search -->
+          <q-btn
+            outline color="purple" text-color="purple"
+            icon="tune" label="Otimizar (Grid)"
+            :loading="gridRunning"
+            class="full-width q-mt-sm"
+            size="sm"
+            @click="runGrid"
+            style="font-weight:600;letter-spacing:0.5px;"
+          />
+
           <!-- Dica -->
           <div class="param-hint q-mt-md">
             <q-icon name="info_outline" size="13px" />
-            O backtest simula cada candle com o engine completo — mesmo critério do bot ao vivo.
+            {{ params.use_mtf
+              ? 'MTF on: usa analyze_mtf com H1/H4 e DXY — fiel ao bot ao vivo.'
+              : 'MTF off: só o timeframe primário (mais sinais, menos preciso).' }}
+            Fluxo de ticks, notícias e IA são camadas ao vivo (não entram no backtest).
           </div>
         </div>
       </div>
@@ -88,7 +118,7 @@
       <div class="bt-results-col">
 
         <!-- Estado vazio -->
-        <div v-if="!result && !running" class="bt-empty">
+        <div v-if="!result && !running && !gridResult && !gridRunning" class="bt-empty">
           <q-icon name="query_stats" size="56px" style="opacity:.2;" />
           <div class="text-muted q-mt-md" style="font-size:15px;">Configure os parâmetros e clique em Rodar</div>
           <div class="text-caption text-muted q-mt-xs">Histórico real da Deriv via walk-forward</div>
@@ -101,6 +131,76 @@
             Analisando {{ params.count }} candles...
           </div>
           <div class="text-caption text-muted q-mt-xs">Simulando confluência de indicadores em cada vela</div>
+        </div>
+
+        <!-- Grid search: loading -->
+        <div v-if="gridRunning" class="bt-empty">
+          <q-spinner-gears color="purple" size="52px" />
+          <div class="text-neon-purple q-mt-md" style="font-size:15px;font-weight:700;">
+            Otimizando parâmetros...
+          </div>
+          <div class="text-caption text-muted q-mt-xs">Testando combinações de score × ADX × confiança</div>
+        </div>
+
+        <!-- Grid search: resultado -->
+        <div v-if="gridResult && !gridRunning" class="grid-card q-mb-md">
+          <div class="grid-header">
+            <span class="text-caption text-secondary" style="letter-spacing:1.5px;">
+              OTIMIZAÇÃO — {{ gridResult.total_combos }} COMBINAÇÕES
+            </span>
+            <q-btn flat dense size="sm" icon="close" color="grey-6" @click="gridResult = null" />
+          </div>
+
+          <div v-if="gridResult.best" class="grid-best">
+            <div class="row items-center justify-between">
+              <div>
+                <div class="text-caption text-muted" style="font-size:9px;letter-spacing:1px;">MELHOR COMBINAÇÃO</div>
+                <div class="text-weight-bold text-neon-green" style="font-size:13px;">
+                  Score {{ gridResult.best.min_score }} · ADX {{ gridResult.best.min_adx }} · Conf {{ gridResult.best.min_confidence }}%
+                </div>
+                <div class="text-caption text-muted">
+                  {{ gridResult.best.trades }} trades · WR {{ gridResult.best.win_rate }}% ·
+                  PF {{ gridResult.best.profit_factor }}
+                </div>
+              </div>
+              <q-btn
+                unelevated color="positive" text-color="black" size="sm"
+                icon="check" label="Aplicar"
+                @click="applyBest"
+                style="font-weight:700;"
+              />
+            </div>
+          </div>
+
+          <div class="grid-table-wrap">
+            <table class="grid-table">
+              <thead>
+                <tr>
+                  <th>Score</th><th>ADX</th><th>Conf</th>
+                  <th>Trades</th><th>WR</th><th>P&L</th><th>PF</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(c, i) in gridResult.combos" :key="i"
+                  :class="{ 'grid-row-best': i === 0 && c.trades >= 10, 'grid-row-thin': c.trades < 10 }">
+                  <td>{{ c.min_score }}</td>
+                  <td>{{ c.min_adx }}</td>
+                  <td>{{ c.min_confidence }}%</td>
+                  <td>{{ c.trades }}</td>
+                  <td :class="c.win_rate >= 55 ? 'text-neon-green' : c.win_rate >= 45 ? 'text-neon-amber' : 'text-neon-red'">
+                    {{ c.win_rate }}%
+                  </td>
+                  <td :class="c.pnl >= 0 ? 'text-neon-green' : 'text-neon-red'" class="font-mono">
+                    {{ c.pnl >= 0 ? '+' : '' }}{{ c.pnl.toFixed(1) }}
+                  </td>
+                  <td>{{ c.profit_factor }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="text-caption text-muted q-pa-sm" style="font-size:9px;">
+            Combinações com menos de 10 trades aparecem esmaecidas (amostra pequena).
+          </div>
         </div>
 
         <!-- Métricas: 2-por-linha mobile / 5 em linha desktop -->
@@ -243,16 +343,19 @@ import { createChart, ColorType, LineStyle } from 'lightweight-charts'
 
 const running = ref(false)
 const result  = ref<any>(null)
+const gridRunning = ref(false)
+const gridResult  = ref<any>(null)
 const equityChartEl = ref<HTMLElement | null>(null)
 let equityChart: any = null
 
 const params = ref({
-  count:          300,
+  count:          500,
   min_confidence: 78,
   min_score:      5,
   min_adx:        22,
   stake:          6,
   granularity:    900,
+  use_mtf:        true,
 })
 
 async function runBacktest() {
@@ -262,7 +365,7 @@ async function runBacktest() {
   equityChart = null
 
   try {
-    const res = await api.get('/backtest/run', { params: params.value, timeout: 120000 })
+    const res = await api.get('/backtest/run', { params: params.value, timeout: 180000 })
     result.value = res.data
     await nextTick()
     renderEquityChart()
@@ -271,6 +374,37 @@ async function runBacktest() {
   } finally {
     running.value = false
   }
+}
+
+async function runGrid() {
+  gridRunning.value = true
+  gridResult.value  = null
+  try {
+    const res = await api.get('/backtest/grid', {
+      params: {
+        granularity: params.value.granularity,
+        count:       params.value.count,
+        stake:       params.value.stake,
+        use_mtf:     params.value.use_mtf,
+      },
+      timeout: 300000,
+    })
+    gridResult.value = res.data
+  } catch (e: any) {
+    console.error('Grid error:', e)
+  } finally {
+    gridRunning.value = false
+  }
+}
+
+function applyBest() {
+  const b = gridResult.value?.best
+  if (!b) return
+  params.value.min_score      = b.min_score
+  params.value.min_adx        = b.min_adx
+  params.value.min_confidence = b.min_confidence
+  gridResult.value = null
+  runBacktest()
 }
 
 function renderEquityChart() {
@@ -462,6 +596,41 @@ watch(result, async (val) => {
 .mc-sub   { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
 .mc-bar-wrap { height: 3px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; margin-top: 8px; }
 .mc-bar  { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+
+// ── Grid search card ──────────────────────────────────────────────────────────
+.grid-card {
+  background: var(--bg-surface);
+  border: 1px solid rgba(149,76,233,0.25);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.grid-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.grid-best {
+  padding: 12px 16px;
+  background: rgba(0,255,136,0.05);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.grid-table-wrap { overflow-x: auto; }
+.grid-table {
+  width: 100%; border-collapse: collapse; font-size: 11px;
+  th {
+    text-align: center; padding: 8px 6px; font-size: 9px; letter-spacing: 1px;
+    color: var(--text-muted); border-bottom: 1px solid var(--border-subtle);
+    position: sticky; top: 0; background: var(--bg-surface);
+  }
+  td {
+    text-align: center; padding: 7px 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    color: var(--text-secondary);
+  }
+  .font-mono { font-family: 'Roboto Mono', monospace; font-weight: 600; }
+}
+.grid-row-best { background: rgba(0,255,136,0.07); td { font-weight: 700; } }
+.grid-row-thin { opacity: 0.4; }
 
 // ── Equity card ───────────────────────────────────────────────────────────────
 .equity-card {
