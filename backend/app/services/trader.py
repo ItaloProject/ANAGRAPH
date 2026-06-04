@@ -751,6 +751,15 @@ class TradingBot:
         contract_type = CONTRACT_TYPE[result.signal]
         entry_price   = float(list(self.candles)[-1]["close"]) if self.candles else 0.0
 
+        # ── Verifica WS ANTES de criar o TradeRecord ─────────────────────────
+        # Erros de WS (conexão) não devem criar entradas "ERRO" no histórico
+        # nem ativar cooldown — o bot simplesmente aguarda a reconexão.
+        try:
+            self.client._require_trade_ws()
+        except RuntimeError as ws_err:
+            logger.warning(f"Trade adiado (WS indisponível): {ws_err}")
+            return   # sem TradeRecord, sem cooldown, sem erro no histórico
+
         trade = TradeRecord(
             signal=result.signal,
             asset=self.asset,
@@ -814,14 +823,27 @@ class TradingBot:
         except Exception as e:
             self.risk.stats.open_positions = max(0, self.risk.stats.open_positions - 1)
             self.risk.stats.trades = max(0, self.risk.stats.trades - 1)
-            trade.status = "ERROR"
-            trade.reason = f"Erro DERIV: {e}"
-            trade.pnl    = 0.0
-            self._last_error_at = time.time()   # ativa cooldown
-            self._merge_trade_by_contract(trade)
-            logger.error(f"Trade error: {e}", exc_info=True)
-            if self.on_trade:
-                asyncio.create_task(self.on_trade(trade.to_dict()))
+
+            err_str = str(e).lower()
+            is_ws_error = any(kw in err_str for kw in (
+                "ws", "connection", "websocket", "closed", "não conectada",
+                "estado", "timeout", "não aberta",
+            ))
+
+            if is_ws_error:
+                # Erro de conexão: não cria histórico de ERRO, não ativa cooldown.
+                # O bot vai tentar novamente na próxima janela de análise.
+                logger.warning(f"Trade adiado (conexão instável): {e}")
+            else:
+                # Erro real da API Deriv (TradingDurationNotAllowed, saldo insuf., etc.)
+                trade.status = "ERROR"
+                trade.reason = f"Erro DERIV: {e}"
+                trade.pnl    = 0.0
+                self._last_error_at = time.time()   # ativa cooldown apenas para erros reais
+                self._merge_trade_by_contract(trade)
+                logger.error(f"Trade error: {e}", exc_info=True)
+                if self.on_trade:
+                    asyncio.create_task(self.on_trade(trade.to_dict()))
 
     async def _on_contract_update(self, trade: TradeRecord, poc: dict):
         status = poc.get("status", "")
