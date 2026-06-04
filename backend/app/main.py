@@ -127,8 +127,9 @@ class BotStartRequest(BaseModel):
 def _enforce_conservative(req: BotStartRequest) -> BotStartRequest:
     """Garante piso do perfil conservador oficial — qualidade sobre quantidade."""
     req.asset = "EUR/USD"
-    req.granularity = 900
     req.contract_duration = max(req.contract_duration, 15)
+    # Alinha granularidade com duração do contrato: 15 min → M15, 30/60 min → H1
+    req.granularity = 900 if req.contract_duration <= 15 else 3600
     req.min_confidence = max(req.min_confidence, 78.0)
     req.max_consecutive_losses = min(req.max_consecutive_losses, 3)
     req.cooldown_after_loss_sec = max(req.cooldown_after_loss_sec, 300)

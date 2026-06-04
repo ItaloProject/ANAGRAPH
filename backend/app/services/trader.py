@@ -25,6 +25,13 @@ SYMBOL_MAP = {
     "Boom 1000":    "BOOM1000",
 }
 
+# Timeframes HTF por granularidade primária
+# (htf1_gran, htf2_gran, htf1_label, htf2_label)
+HTF_MAP: dict[int, tuple[int, int, str, str]] = {
+    900:  (3600,  14400, "H1", "H4"),   # M15 → H1, H4
+    3600: (14400, 86400, "H4", "D1"),   # H1  → H4, D1
+}
+
 # Ativo ideal por sessão (modo multi-ativo / auto_asset).
 # London/NY: pares EUR têm volume institucional.
 # Asiático:  USD/JPY tem volume real (sessão de Tóquio).
@@ -301,15 +308,17 @@ class TradingBot:
                 self.candles.append(c)
             logger.info(f"Loaded {len(self.candles)} candles (primary TF)")
 
-            hist_h1 = await self.client.get_candles(self.symbol, 3600, 200)
+            htf1g, htf2g, htf1_lbl, htf2_lbl = HTF_MAP.get(self.granularity, HTF_MAP[900])
+
+            hist_h1 = await self.client.get_candles(self.symbol, htf1g, 200)
             for c in hist_h1:
                 self.candles_h1.append(c)
-            logger.info(f"Loaded {len(self.candles_h1)} candles (H1)")
+            logger.info(f"Loaded {len(self.candles_h1)} candles ({htf1_lbl})")
 
-            hist_h4 = await self.client.get_candles(self.symbol, 14400, 150)
+            hist_h4 = await self.client.get_candles(self.symbol, htf2g, 150)
             for c in hist_h4:
                 self.candles_h4.append(c)
-            logger.info(f"Loaded {len(self.candles_h4)} candles (H4)")
+            logger.info(f"Loaded {len(self.candles_h4)} candles ({htf2_lbl})")
 
             # DXY proxy só para pares não-JPY (se operar USD/JPY, seria circular)
             if not self._is_jpy_pair():
@@ -437,10 +446,11 @@ class TradingBot:
             hist = await self.client.get_candles(self.symbol, self.granularity, 200)
             for c in hist:
                 self.candles.append(c)
-            h1 = await self.client.get_candles(self.symbol, 3600, 200)
+            htf1g, htf2g, _, _ = HTF_MAP.get(self.granularity, HTF_MAP[900])
+            h1 = await self.client.get_candles(self.symbol, htf1g, 200)
             for c in h1:
                 self.candles_h1.append(c)
-            h4 = await self.client.get_candles(self.symbol, 14400, 150)
+            h4 = await self.client.get_candles(self.symbol, htf2g, 150)
             for c in h4:
                 self.candles_h4.append(c)
 
@@ -501,17 +511,18 @@ class TradingBot:
 
     async def _refresh_htf_candles(self, h4: bool = False):
         try:
-            hist_h1 = await self.client.get_candles(self.symbol, 3600, 200)
+            htf1g, htf2g, htf1_lbl, htf2_lbl = HTF_MAP.get(self.granularity, HTF_MAP[900])
+            hist_h1 = await self.client.get_candles(self.symbol, htf1g, 200)
             self.candles_h1.clear()
             for c in hist_h1:
                 self.candles_h1.append(c)
-            logger.info(f"HTF refresh: {len(self.candles_h1)} H1 candles")
+            logger.info(f"HTF refresh: {len(self.candles_h1)} {htf1_lbl} candles")
             if h4:
-                hist_h4 = await self.client.get_candles(self.symbol, 14400, 150)
+                hist_h4 = await self.client.get_candles(self.symbol, htf2g, 150)
                 self.candles_h4.clear()
                 for c in hist_h4:
                     self.candles_h4.append(c)
-                logger.info(f"HTF refresh: {len(self.candles_h4)} H4 candles")
+                logger.info(f"HTF refresh: {len(self.candles_h4)} {htf2_lbl} candles")
         except Exception as e:
             logger.warning(f"HTF refresh failed: {e}")
 
