@@ -337,7 +337,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { api } from '../services/http'
 import { createChart, ColorType, LineStyle } from 'lightweight-charts'
 
@@ -347,31 +347,87 @@ const gridRunning = ref(false)
 const gridResult  = ref<any>(null)
 const equityChartEl = ref<HTMLElement | null>(null)
 let equityChart: any = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+const LS_BT_JOB   = 'anagraph_bt_job_id'
+const LS_GRID_JOB = 'anagraph_grid_job_id'
+const LS_BT_RES   = 'anagraph_bt_result'
+const LS_GRID_RES = 'anagraph_grid_result'
 
 const params = ref({
   count:          500,
   min_confidence: 78,
   min_score:      5,
-  min_adx:        22,
+  min_adx:        20,
   stake:          6,
   granularity:    900,
   use_mtf:        true,
 })
+
+// ── Polling ───────────────────────────────────────────────────────────────────
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+}
+
+async function pollJob(jobId: string, type: 'backtest' | 'grid') {
+  try {
+    const res = await api.get(`/backtest/status/${jobId}`)
+    const job = res.data
+
+    if (job.status === 'done') {
+      stopPolling()
+      if (type === 'backtest') {
+        running.value = false
+        result.value  = job.result
+        localStorage.removeItem(LS_BT_JOB)
+        localStorage.setItem(LS_BT_RES, JSON.stringify(job.result))
+        await nextTick()
+        renderEquityChart()
+      } else {
+        gridRunning.value = false
+        gridResult.value  = job.result
+        localStorage.removeItem(LS_GRID_JOB)
+        localStorage.setItem(LS_GRID_RES, JSON.stringify(job.result))
+      }
+    } else if (job.status === 'error') {
+      stopPolling()
+      if (type === 'backtest') { running.value = false; localStorage.removeItem(LS_BT_JOB) }
+      else { gridRunning.value = false; localStorage.removeItem(LS_GRID_JOB) }
+      console.error(`Job ${jobId} error:`, job.error)
+    }
+  } catch (e: any) {
+    if (e?.response?.status === 404) {
+      // Job expirou no servidor (reinicio) — limpa estado
+      stopPolling()
+      if (type === 'backtest') { running.value = false; localStorage.removeItem(LS_BT_JOB) }
+      else { gridRunning.value = false; localStorage.removeItem(LS_GRID_JOB) }
+    }
+  }
+}
+
+function startPolling(jobId: string, type: 'backtest' | 'grid') {
+  stopPolling()
+  pollJob(jobId, type)                                      // primeira chamada imediata
+  pollTimer = setInterval(() => pollJob(jobId, type), 2000) // depois a cada 2s
+}
+
+// ── Ações ─────────────────────────────────────────────────────────────────────
 
 async function runBacktest() {
   running.value = true
   result.value  = null
   equityChart?.remove()
   equityChart = null
+  localStorage.removeItem(LS_BT_RES)
 
   try {
-    const res = await api.get('/backtest/run', { params: params.value, timeout: 180000 })
-    result.value = res.data
-    await nextTick()
-    renderEquityChart()
+    const res = await api.get('/backtest/start', { params: params.value })
+    const jobId = res.data.job_id
+    localStorage.setItem(LS_BT_JOB, jobId)
+    startPolling(jobId, 'backtest')
   } catch (e: any) {
-    console.error('Backtest error:', e)
-  } finally {
+    console.error('Backtest start error:', e)
     running.value = false
   }
 }
@@ -379,20 +435,22 @@ async function runBacktest() {
 async function runGrid() {
   gridRunning.value = true
   gridResult.value  = null
+  localStorage.removeItem(LS_GRID_RES)
+
   try {
-    const res = await api.get('/backtest/grid', {
+    const res = await api.get('/backtest/grid/start', {
       params: {
         granularity: params.value.granularity,
         count:       params.value.count,
         stake:       params.value.stake,
         use_mtf:     params.value.use_mtf,
       },
-      timeout: 300000,
     })
-    gridResult.value = res.data
+    const jobId = res.data.job_id
+    localStorage.setItem(LS_GRID_JOB, jobId)
+    startPolling(jobId, 'grid')
   } catch (e: any) {
-    console.error('Grid error:', e)
-  } finally {
+    console.error('Grid start error:', e)
     gridRunning.value = false
   }
 }
@@ -406,6 +464,26 @@ function applyBest() {
   gridResult.value = null
   runBacktest()
 }
+
+// ── Lifecycle — retoma job pendente ao voltar para a página ──────────────────
+
+onMounted(async () => {
+  // Restaura último resultado salvo (se houver)
+  const savedBt   = localStorage.getItem(LS_BT_RES)
+  const savedGrid = localStorage.getItem(LS_GRID_RES)
+  if (savedBt)   { result.value     = JSON.parse(savedBt);   await nextTick(); renderEquityChart() }
+  if (savedGrid) { gridResult.value = JSON.parse(savedGrid) }
+
+  // Retoma polling se havia job em andamento
+  const btJob   = localStorage.getItem(LS_BT_JOB)
+  const gridJob = localStorage.getItem(LS_GRID_JOB)
+  if (btJob)   { running.value     = true;  startPolling(btJob,   'backtest') }
+  if (gridJob) { gridRunning.value = true;  startPolling(gridJob, 'grid') }
+})
+
+onUnmounted(() => {
+  stopPolling()   // limpa timer ao sair, mas o job continua no servidor
+})
 
 function renderEquityChart() {
   if (!equityChartEl.value || !result.value?.equity_curve?.length) return
