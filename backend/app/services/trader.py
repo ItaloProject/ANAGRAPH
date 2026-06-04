@@ -725,6 +725,11 @@ class TradingBot:
             logger.info(f"Trade blocked: {decision.reason}")
             return
 
+        # Bloqueia se a WS de trading não está autenticada
+        if not self.client.authorized or not self.client._trade_ws:
+            logger.warning("Trade blocked: WS de trading não autorizada — aguardando reconexão")
+            return
+
         async with self._trade_lock:
             if self.risk.stats.open_positions >= self.risk.config.max_open_positions:
                 logger.info("Trade blocked: operação já aberta ou em abertura")

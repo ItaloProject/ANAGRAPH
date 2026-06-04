@@ -144,6 +144,20 @@ class DerivClient:
         self._tick_cbs.clear()
         self._active_tick_symbol = None
 
+    def _require_trade_ws(self) -> None:
+        """Garante que a WS autenticada está aberta antes de qualquer operação financeira.
+        Lança RuntimeError em vez de silenciosamente usar a WS pública (não autorizada)."""
+        if not self._trade_ws:
+            raise RuntimeError("Trade WS não conectada — aguardando reconexão OTP")
+        try:
+            state = self._trade_ws.state   # websockets.connection.State
+            import websockets.connection as _wsc
+            if state != _wsc.State.OPEN:
+                raise RuntimeError(f"Trade WS está em estado {state.name} — não aberta")
+        except AttributeError:
+            # Versão antiga do websockets sem .state — não bloqueia
+            pass
+
     async def get_proposal(
         self,
         symbol:        str,
@@ -154,7 +168,8 @@ class DerivClient:
         currency:      str = "USD",
     ) -> dict:
         """Rise/Fall proposal: CALL = Rise, PUT = Fall."""
-        ws = self._trade_ws or self._public_ws
+        self._require_trade_ws()
+        ws = self._trade_ws
         payload = {
             "proposal":          1,
             "amount":            round(stake, 2),
@@ -178,7 +193,8 @@ class DerivClient:
         return resp["proposal"]
 
     async def buy_contract(self, proposal_id: str, price: float) -> dict:
-        ws = self._trade_ws or self._public_ws
+        self._require_trade_ws()
+        ws = self._trade_ws
         resp = await self._request_ws(ws, {
             "buy":   proposal_id,
             "price": price,
