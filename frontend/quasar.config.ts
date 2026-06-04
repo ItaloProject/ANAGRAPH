@@ -15,12 +15,15 @@ export default configure(function (/* ctx */) {
       open: true,
       proxy: {
         '/api': {
-          target: 'http://localhost:8001',
+          target: 'https://anagraph-api.onrender.com',
           changeOrigin: true,
+          secure: true,
         },
         '/ws': {
-          target: 'ws://localhost:8001',
+          target: 'wss://anagraph-api.onrender.com',
           ws: true,
+          changeOrigin: true,
+          secure: true,
         },
       },
     },
