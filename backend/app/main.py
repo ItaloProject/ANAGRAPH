@@ -128,8 +128,11 @@ def _enforce_conservative(req: BotStartRequest) -> BotStartRequest:
     """Garante piso do perfil conservador oficial — qualidade sobre quantidade."""
     req.asset = "EUR/USD"
     req.contract_duration = max(req.contract_duration, 15)
-    # Alinha granularidade com duração do contrato: 15 min → M15, 30/60 min → H1
+    # Granularidade de ANÁLISE deriva da preferência do usuário:
+    #   15 min → M15 (900s) · 30/60 min → H1 (3600s) para análise mais precisa
+    # Mas a execução real usa sempre 15 min (limite da Deriv Rise/Fall para forex).
     req.granularity = 900 if req.contract_duration <= 15 else 3600
+    req.contract_duration = 15  # Deriv não suporta >15m para EUR/USD Rise/Fall
     req.min_confidence = max(req.min_confidence, 78.0)
     req.max_consecutive_losses = min(req.max_consecutive_losses, 3)
     req.cooldown_after_loss_sec = max(req.cooldown_after_loss_sec, 300)

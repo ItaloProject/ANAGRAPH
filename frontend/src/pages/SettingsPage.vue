@@ -137,13 +137,18 @@
           </div>
 
           <div class="q-mb-sm">
-            <div class="row-label q-mb-xs">Duração do contrato</div>
+            <div class="row-label q-mb-xs">Horizonte de análise</div>
             <q-btn-toggle v-model="config.contract_duration"
               :options="durations"
               toggle-color="purple" color="transparent" text-color="grey-5"
               unelevated dense />
             <div class="text-caption text-muted q-mt-xs">
-              Mín. 15 min na DERIV — use M15 com 15 min
+              <span v-if="config.contract_duration <= 15">
+                M15 — análise e contrato em 15 min
+              </span>
+              <span v-else>
+                H1 — análise horária, contrato 15 min (limite Deriv Rise/Fall)
+              </span>
             </div>
           </div>
 
@@ -364,9 +369,9 @@ const config  = ref<BotConfig>(loadConfig())
 const usdRate = computed(() => getUsdBrlRate())
 
 const durations = [
-  { label: '15 min', value: 15 },
-  { label: '30 min', value: 30 },
-  { label: '60 min', value: 60 },
+  { label: 'M15', value: 15 },
+  { label: 'H1 (30m)', value: 30 },
+  { label: 'H1 (60m)', value: 60 },
 ]
 
 const sessionModes = [

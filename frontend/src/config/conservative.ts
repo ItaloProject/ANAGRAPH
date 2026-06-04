@@ -42,13 +42,14 @@ export const CONSERVATIVE_PROFILE: Required<
 
 export function enforceConservative(cfg: BotConfig): BotConfig {
   const p = CONSERVATIVE_PROFILE
-  const duration = Math.max(cfg.contract_duration ?? p.contract_duration, p.contract_duration)
+  const analysisPref = Math.max(cfg.contract_duration ?? p.contract_duration, p.contract_duration)
   return {
     ...cfg,
     asset:                   p.asset,
-    // Alinha granularidade com duração: 15 min → M15 (900s), 30/60 min → H1 (3600s)
-    granularity:             duration <= 15 ? 900 : 3600,
-    contract_duration:       duration,
+    // Granularidade de análise: preferência 15m → M15, 30/60m → H1 (mais preciso)
+    granularity:             analysisPref <= 15 ? 900 : 3600,
+    // Execução: sempre 15m — Deriv Rise/Fall não suporta >15m para forex
+    contract_duration:       15,
     stake_amount:            cfg.stake_amount ?? p.stake_amount,
     max_stake:               cfg.max_stake ?? p.max_stake,
     daily_loss_limit:        cfg.daily_loss_limit ?? p.daily_loss_limit,
