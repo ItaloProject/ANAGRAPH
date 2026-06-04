@@ -109,10 +109,10 @@ class BotStartRequest(BaseModel):
     asset: str = "EUR/USD"
     granularity: int = 900
     contract_duration: int = Field(default=15, ge=15, le=60, description="Rise/Fall duration in minutes (min 15 for forex)")
-    stake_amount: float = 6.0
-    max_stake: float = 60.0
-    daily_loss_limit: float = 100.0
-    daily_profit_target: float = 150.0
+    stake_amount: float = 35.0   # BRL (≈ $6 USD) — usado pelo autostart
+    max_stake: float = 350.0
+    daily_loss_limit: float = 600.0
+    daily_profit_target: float = 900.0
     min_confidence: float = 78.0
     max_consecutive_losses: int = Field(default=3, ge=1, le=10)
     cooldown_after_loss_sec: int = Field(default=300, ge=0, le=3600)

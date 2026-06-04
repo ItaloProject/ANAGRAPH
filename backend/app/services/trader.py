@@ -772,13 +772,40 @@ class TradingBot:
 
         self.risk.on_trade_opened()
         try:
-            proposal = await self.client.get_proposal(
-                symbol=self.symbol,
-                contract_type=contract_type,
-                stake=stake,
-                duration=self.contract_duration,
-                duration_unit="m",
-            )
+            # ── Fallback automático de duração ────────────────────────────────
+            # A nova API Deriv (api.derivws.com) não suporta minutos para todos
+            # os ativos. Tenta durações em ordem até encontrar uma aceita.
+            proposal = None
+            durations_to_try: list[tuple[int, str]] = [
+                (self.contract_duration, "m"),   # preferido: minutos
+                (5, "m"), (2, "m"), (1, "m"),    # minutos menores
+                (10, "t"), (5, "t"),             # ticks como último recurso
+            ]
+            last_duration_error: Exception | None = None
+            for _dur, _unit in durations_to_try:
+                try:
+                    proposal = await self.client.get_proposal(
+                        symbol=self.symbol,
+                        contract_type=contract_type,
+                        stake=stake,
+                        duration=_dur,
+                        duration_unit=_unit,
+                    )
+                    if (_dur, _unit) != (self.contract_duration, "m"):
+                        logger.warning(
+                            f"Duration fallback: {self.contract_duration}m não suportado "
+                            f"→ usando {_dur}{_unit} para {self.symbol}"
+                        )
+                    break   # encontrou uma duração válida
+                except RuntimeError as _de:
+                    if "TradingDurationNotAllowed" in str(_de):
+                        last_duration_error = _de
+                        continue   # tenta próxima duração
+                    raise          # erro diferente — propaga normalmente
+            if proposal is None:
+                raise last_duration_error or RuntimeError(
+                    f"Nenhuma duração válida encontrada para {self.symbol}"
+                )
 
             buy_resp = await self.client.buy_contract(
                 proposal_id=proposal["id"],
