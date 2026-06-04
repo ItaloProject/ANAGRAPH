@@ -1111,19 +1111,17 @@ class AnalyzerService:
         usd_str = self._usd_strength(candles_usdjpy) if candles_usdjpy else "NEUTRAL"
         result.reason = f"[DXY:{usd_str}] {result.reason}" if usd_str != "NEUTRAL" else result.reason
 
-        # DXY: bônus quando alinhado, penalidade suave quando contra
+        # DXY: bônus quando alinhado (+3), penalidade mínima quando contra (-2).
+        # O driver fundamental USD/EUR já é capturado pela news_service (CAUTION/AVOID).
+        # Penalidade -4% aqui + -12% news = dupla punição pelo mesmo fato → reduzido.
         if result.signal == "BUY" and usd_str == "WEAK":
-            result.confidence = min(97.0, round(result.confidence + 4.0, 1))
+            result.confidence = min(97.0, round(result.confidence + 3.0, 1))
         elif result.signal == "SELL" and usd_str == "STRONG":
-            result.confidence = min(97.0, round(result.confidence + 4.0, 1))
+            result.confidence = min(97.0, round(result.confidence + 3.0, 1))
         elif result.signal == "BUY" and usd_str == "STRONG":
-            # USD forte vai contra compra — penaliza mas não bloqueia sozinho
-            result.confidence = max(0.0, round(result.confidence - 4.0, 1))
-            if result.confidence < 78:
-                result.signal = "WAIT"
-                result.reason = f"[DXY FORTE] conf insuficiente | {result.reason}"
+            result.confidence = max(0.0, round(result.confidence - 2.0, 1))
         elif result.signal == "SELL" and usd_str == "WEAK":
-            result.confidence = max(0.0, round(result.confidence - 4.0, 1))
+            result.confidence = max(0.0, round(result.confidence - 2.0, 1))
             if result.confidence < 78:
                 result.signal = "WAIT"
                 result.reason = f"[DXY FRACO] conf insuficiente | {result.reason}"

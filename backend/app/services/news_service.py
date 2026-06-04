@@ -232,9 +232,9 @@ Retorne SOMENTE um JSON válido (sem texto extra):
             elif signal == "SELL" and score < -30:
                 mult = 1.05   # CAUTION mas sentimento bearish — leve bônus
             elif signal == "BUY"  and score < -30:
-                mult = 0.88   # CAUTION + BUY contra EUR bearish — penalidade moderada
+                mult = 0.93   # CAUTION + BUY contra EUR bearish — penalidade leve (DXY já penaliza)
             elif signal == "SELL" and score >  30:
-                mult = 0.88   # CAUTION + SELL contra EUR bullish — penalidade moderada
+                mult = 0.93   # CAUTION + SELL contra EUR bullish — penalidade leve
             else:
                 mult = 0.95   # CAUTION neutro — penalidade mínima
         else:
