@@ -40,8 +40,10 @@ SESSION_PRIMARY_ASSET = {
     "asian":     "USD/JPY",
 }
 
-# Rise/Fall on DERIV: CALL = Rise (Up), PUT = Fall (Down)
+# Rise/Fall binário: CALL = Rise, PUT = Fall
 CONTRACT_TYPE = {"BUY": "CALL", "SELL": "PUT"}
+# Multipliers — fallback para contas que não suportam binário Rise/Fall em forex
+CONTRACT_TYPE_MULTI = {"BUY": "MULTUP", "SELL": "MULTDOWN"}
 
 
 class TradeRecord:
@@ -772,39 +774,57 @@ class TradingBot:
 
         self.risk.on_trade_opened()
         try:
-            # ── Fallback automático de duração ────────────────────────────────
-            # A nova API Deriv (api.derivws.com) não suporta minutos para todos
-            # os ativos. Tenta durações em ordem até encontrar uma aceita.
+            # ── Fallback automático de tipo + duração ─────────────────────────
+            # A nova API Deriv (api.derivws.com) para contas DOT não suporta
+            # Rise/Fall binário (CALL/PUT) para pares forex.
+            # Ordem: Rise/Fall com vários formatos → Multiplier (MULTUP/MULTDOWN)
             proposal = None
-            durations_to_try: list[tuple[int, str]] = [
-                (self.contract_duration, "m"),   # preferido: minutos
-                (5, "m"), (2, "m"), (1, "m"),    # minutos menores
-                (10, "t"), (5, "t"),             # ticks como último recurso
+            attempts: list[tuple[str, int, str]] = [
+                # (contract_type, duration, unit)
+                (contract_type,                    self.contract_duration, "m"),
+                (contract_type,                    5, "m"),
+                (contract_type,                    1, "m"),
+                (contract_type,                    10, "t"),
+                (contract_type,                    5,  "t"),
+                # Fallback final: Multiplier (posição contínua com stop-loss)
+                (CONTRACT_TYPE_MULTI[result.signal], 0,  ""),
             ]
             last_duration_error: Exception | None = None
-            for _dur, _unit in durations_to_try:
+            for _ctype, _dur, _unit in attempts:
                 try:
-                    proposal = await self.client.get_proposal(
-                        symbol=self.symbol,
-                        contract_type=contract_type,
-                        stake=stake,
-                        duration=_dur,
-                        duration_unit=_unit,
-                    )
-                    if (_dur, _unit) != (self.contract_duration, "m"):
-                        logger.warning(
-                            f"Duration fallback: {self.contract_duration}m não suportado "
-                            f"→ usando {_dur}{_unit} para {self.symbol}"
+                    if _ctype in ("MULTUP", "MULTDOWN"):
+                        proposal = await self.client.get_proposal(
+                            symbol=self.symbol,
+                            contract_type=_ctype,
+                            stake=stake,
+                            multiplier=100,
                         )
-                    break   # encontrou uma duração válida
+                        logger.warning(
+                            f"Contrato binário não disponível para {self.symbol} "
+                            f"→ usando Multiplier ({_ctype} ×100)"
+                        )
+                        contract_type = _ctype   # atualiza para o buy
+                    else:
+                        proposal = await self.client.get_proposal(
+                            symbol=self.symbol,
+                            contract_type=_ctype,
+                            stake=stake,
+                            duration=_dur,
+                            duration_unit=_unit,
+                        )
+                        if (_ctype, _dur, _unit) != (contract_type, self.contract_duration, "m"):
+                            logger.warning(
+                                f"Duration fallback: usando {_dur}{_unit} para {self.symbol}"
+                            )
+                    break   # encontrou formato válido
                 except RuntimeError as _de:
                     if "TradingDurationNotAllowed" in str(_de):
                         last_duration_error = _de
-                        continue   # tenta próxima duração
-                    raise          # erro diferente — propaga normalmente
+                        continue   # tenta próxima opção
+                    raise          # erro diferente — propaga
             if proposal is None:
                 raise last_duration_error or RuntimeError(
-                    f"Nenhuma duração válida encontrada para {self.symbol}"
+                    f"Nenhum contrato válido encontrado para {self.symbol}"
                 )
 
             buy_resp = await self.client.buy_contract(

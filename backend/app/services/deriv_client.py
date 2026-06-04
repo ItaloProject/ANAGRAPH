@@ -166,20 +166,47 @@ class DerivClient:
         duration:      int = 5,
         duration_unit: str = "m",
         currency:      str = "USD",
+        multiplier:    int = 0,
     ) -> dict:
-        """Rise/Fall proposal: CALL = Rise, PUT = Fall."""
+        """Rise/Fall (CALL/PUT) ou Multiplier (MULTUP/MULTDOWN) proposal."""
         self._require_trade_ws()
         ws = self._trade_ws
-        payload = {
-            "proposal":          1,
-            "amount":            round(stake, 2),
-            "basis":             "stake",
-            "contract_type":     contract_type,
-            "currency":          currency,
-            "duration":          duration,
-            "duration_unit":     duration_unit,
-            "underlying_symbol": symbol,
-        }
+
+        if contract_type in ("MULTUP", "MULTDOWN"):
+            # ── Multiplier proposal (sem duração — posição contínua) ──────────
+            # Stop-loss automático = stake total (máximo a perder = valor apostado)
+            payload: dict = {
+                "proposal":      1,
+                "amount":        round(stake, 2),
+                "basis":         "stake",
+                "contract_type": contract_type,
+                "currency":      currency,
+                "symbol":        symbol,
+                "multiplier":    multiplier or 100,
+                "limit_order": {
+                    "stop_loss": {
+                        "order_type":   "limit",
+                        "order_amount": -round(stake, 2),
+                    },
+                    "take_profit": {
+                        "order_type":   "limit",
+                        "order_amount": round(stake * 0.85, 2),
+                    },
+                },
+            }
+        else:
+            # ── Rise/Fall (CALL/PUT) proposal ────────────────────────────────
+            payload = {
+                "proposal":          1,
+                "amount":            round(stake, 2),
+                "basis":             "stake",
+                "contract_type":     contract_type,
+                "currency":          currency,
+                "duration":          duration,
+                "duration_unit":     duration_unit,
+                "underlying_symbol": symbol,
+            }
+
         resp = await self._request_ws(ws, payload)
         if resp.get("error"):
             err = resp["error"]
