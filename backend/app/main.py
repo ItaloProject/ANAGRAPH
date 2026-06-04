@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -117,7 +118,7 @@ class BotStartRequest(BaseModel):
     cooldown_after_loss_sec: int = Field(default=300, ge=0, le=3600)
     analyzer_min_score: int = Field(default=5, ge=3, le=10)
     analyzer_min_gap: int = Field(default=2, ge=1, le=5)
-    analyzer_min_adx: float = Field(default=22.0, ge=15.0, le=40.0)
+    analyzer_min_adx: float = Field(default=20.0, ge=15.0, le=40.0)
     analyze_every: int = 15
     session_mode: str = "london_ny"  # "all"|"london_ny"|"london"|"new_york"|"asian"
     auto_asset: bool = False         # multi-ativo por sessão (EUR/USD diurno, USD/JPY asiático)

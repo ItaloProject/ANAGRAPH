@@ -14,7 +14,7 @@ Rules (applied after every closed trade):
 Hard floors (never goes below):
   min_confidence = 78.0
   min_score      = 5
-  min_adx        = 22.0
+  min_adx        = 20.0
 
 Hard ceilings (never goes above):
   min_confidence = 92.0
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 FLOOR_CONFIDENCE = 78.0
 FLOOR_SCORE      = 5
-FLOOR_ADX        = 22.0
+FLOOR_ADX        = 20.0
 
 CEIL_CONFIDENCE  = 92.0
 CEIL_SCORE       = 9
