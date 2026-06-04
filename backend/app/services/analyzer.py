@@ -851,9 +851,9 @@ class AnalyzerService:
 
         # Price momentum last 5 candles (max 1)
         momentum = (price - float(close.iloc[-5])) / float(close.iloc[-5]) * 100
-        if momentum > 0.05:
+        if momentum > 0.30:
             buy_score += 1
-        elif momentum < -0.05:
+        elif momentum < -0.30:
             sell_score += 1
 
         # ── Candlestick patterns (max +2 each side) ───────────────────────

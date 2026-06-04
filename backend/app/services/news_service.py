@@ -226,7 +226,7 @@ Retorne SOMENTE um JSON válido (sem texto extra):
 
         mult = 1.0
         if rec == "CAUTION":
-            mult = 0.75
+            mult = 0.88  # penalidade leve — sinais alinhados ainda passam
 
         # Bônus de alinhamento: sentimento concorda com o sinal
         if signal == "BUY"  and score >  30:
@@ -235,9 +235,9 @@ Retorne SOMENTE um JSON válido (sem texto extra):
             mult = min(1.15, mult + 0.10)
         # Penalidade: sentimento contra o sinal
         elif signal == "BUY"  and score < -30:
-            mult = max(0.60, mult - 0.20)
+            mult = max(0.65, mult - 0.20)
         elif signal == "SELL" and score >  30:
-            mult = max(0.60, mult - 0.20)
+            mult = max(0.65, mult - 0.20)
 
         label = f"[NEWS {rec}] {reason}" if rec != "OK" or abs(score) > 30 else ""
         return mult, label
