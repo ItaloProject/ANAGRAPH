@@ -703,31 +703,38 @@ class TradingBot:
             f"ATR×{result.atr_ratio:.1f} | diverg=[{divs}] | {result.reason}"
         )
 
+        # ── Determina motivo de bloqueio (exibido na UI via last_signal) ────────
+        block_reason: str = ""
+
         # Cooldown após ERRO de API
         if self._last_error_at > 0:
             elapsed = time.time() - self._last_error_at
             if elapsed < self._error_cooldown:
                 remaining = int(self._error_cooldown - elapsed)
-                logger.info(f"Cooldown pós-ERRO: {remaining}s restantes")
-                return
+                block_reason = f"Cooldown pós-erro: {remaining}s restantes"
+                logger.info(block_reason)
 
-        # Use adaptive confidence threshold (may be stricter than base)
-        effective_conf = max(self.risk.config.min_confidence, self.adaptive.state.min_confidence)
-        win_rate = self.learning.stats().get("win_rate", 0.0) / 100.0
-        decision = self.risk.can_trade(result.confidence, result.signal, win_rate)
-        if not decision.allowed:
-            pass
-        elif result.confidence < effective_conf:
-            logger.info(f"Trade blocked by adaptive threshold: {result.confidence:.1f}% < {effective_conf:.1f}%")
-            decision.allowed = False
-            decision.reason  = f"Confiança adaptativa exige {effective_conf:.1f}% (regime: {self.adaptive.state.regime})"
-        if not decision.allowed:
-            logger.info(f"Trade blocked: {decision.reason}")
-            return
+        # WS de trading não autenticada
+        if not block_reason and (not self.client.authorized or not self.client._trade_ws):
+            block_reason = "WS de trading não autenticada — reconectando"
 
-        # Bloqueia se a WS de trading não está autenticada
-        if not self.client.authorized or not self.client._trade_ws:
-            logger.warning("Trade blocked: WS de trading não autorizada — aguardando reconexão")
+        # Risk manager (limite de perda, cooldown de loss, posição aberta, etc.)
+        if not block_reason:
+            effective_conf = max(self.risk.config.min_confidence, self.adaptive.state.min_confidence)
+            win_rate = self.learning.stats().get("win_rate", 0.0) / 100.0
+            decision = self.risk.can_trade(result.confidence, result.signal, win_rate)
+            if not decision.allowed:
+                block_reason = decision.reason
+            elif result.confidence < effective_conf:
+                block_reason = f"Confiança {result.confidence:.1f}% < mínimo adaptativo {effective_conf:.1f}%"
+
+        if block_reason:
+            logger.info(f"Trade blocked: {block_reason}")
+            # Propaga o motivo para a UI via last_signal
+            if self.last_signal:
+                self.last_signal["block_reason"] = block_reason
+            if self.on_signal and self.last_signal:
+                asyncio.create_task(self.on_signal({**self.last_signal, "block_reason": block_reason}))
             return
 
         async with self._trade_lock:

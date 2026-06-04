@@ -166,6 +166,7 @@ export const useMarketStore = defineStore('market', () => {
       sample_count: number; storage?: string
     },
     learning_label: '' as string,
+    block_reason:   '' as string,   // motivo pelo qual o bot não operou (cooldown, WS, limite, etc.)
   })
 
   function updateIndicators(data: Record<string, any>) {
@@ -196,6 +197,7 @@ export const useMarketStore = defineStore('market', () => {
       news:            data.news && Object.keys(data.news).length ? data.news : null,
       learning:        data.learning ?? null,
       learning_label:  data.learning_label ?? '',
+      block_reason:    data.block_reason ?? '',
     }
   }
 

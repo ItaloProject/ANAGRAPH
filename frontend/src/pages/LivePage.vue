@@ -241,7 +241,19 @@
         </div>
       </div>
 
-      <!-- Motivo ou aguardando -->
+      <!-- Motivo de bloqueio (quando sinal existe mas trade não foi executado) -->
+      <div
+        v-if="marketStore.liveIndicators.block_reason && marketStore.liveIndicators.last_signal !== 'WAIT'"
+        class="reason-bar q-mt-xs"
+        style="border-left: 2px solid var(--accent-amber); padding-left: 8px;"
+      >
+        <q-icon name="lock_clock" size="12px" color="amber" />
+        <span class="text-caption q-ml-xs" style="color: var(--accent-amber); font-weight: 600;">
+          Não operou: {{ marketStore.liveIndicators.block_reason }}
+        </span>
+      </div>
+
+      <!-- Motivo da análise -->
       <div v-if="marketStore.liveIndicators.last_reason" class="reason-bar q-mt-xs">
         <q-icon name="info_outline" size="12px" style="color:var(--text-muted);" />
         <span class="text-caption text-muted q-ml-xs">{{ marketStore.liveIndicators.last_reason }}</span>
