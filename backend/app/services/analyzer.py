@@ -914,7 +914,12 @@ class AnalyzerService:
             and gap >= self.min_score_gap
             and price >= e50 * 0.9995
         ):
-            conf = min(97.0, round((buy_score / total) * 100 + gap * 2, 1))
+            # Fórmula baseada em força absoluta, não em dominância relativa.
+            # (buy/total)*100 colapsa quando sell_score é alto — qualquer sinal
+            # misto ficava ≤66% antes de qualquer multiplicador.
+            # Nova: base 65% + bônus por excesso acima do mínimo + bônus de gap.
+            excess = buy_score - self.min_score
+            conf = min(97.0, round(65.0 + excess * 4 + gap * 3, 1))
             result = AnalysisResult(
                 "BUY", conf, rsi, macd, macd_s, bb_u, bb_l, bb_m,
                 e9, e21, " | ".join(reasons), buy_score, sell_score, adx,
@@ -934,7 +939,8 @@ class AnalyzerService:
             and gap >= self.min_score_gap
             and price <= e50 * 1.0005
         ):
-            conf = min(97.0, round((sell_score / total) * 100 + gap * 2, 1))
+            excess = sell_score - self.min_score
+            conf = min(97.0, round(65.0 + excess * 4 + gap * 3, 1))
             result = AnalysisResult(
                 "SELL", conf, rsi, macd, macd_s, bb_u, bb_l, bb_m,
                 e9, e21, " | ".join(reasons), buy_score, sell_score, adx,

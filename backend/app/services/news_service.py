@@ -224,20 +224,21 @@ Retorne SOMENTE um JSON válido (sem texto extra):
         if rec == "AVOID":
             return 0.0, f"[NEWS AVOID] {reason}"
 
-        mult = 1.0
+        # Multiplicador único por cenário — sem empilhamento de descontos.
+        # CAUTION base + penalidade separada causava 0.88×0.80=0.68 (32% off).
         if rec == "CAUTION":
-            mult = 0.88  # penalidade leve — sinais alinhados ainda passam
-
-        # Bônus de alinhamento: sentimento concorda com o sinal
-        if signal == "BUY"  and score >  30:
-            mult = min(1.15, mult + 0.10)
-        elif signal == "SELL" and score < -30:
-            mult = min(1.15, mult + 0.10)
-        # Penalidade: sentimento contra o sinal
-        elif signal == "BUY"  and score < -30:
-            mult = max(0.65, mult - 0.20)
-        elif signal == "SELL" and score >  30:
-            mult = max(0.65, mult - 0.20)
+            if   signal == "BUY"  and score >  30:
+                mult = 1.05   # CAUTION mas sentimento bullish — leve bônus
+            elif signal == "SELL" and score < -30:
+                mult = 1.05   # CAUTION mas sentimento bearish — leve bônus
+            elif signal == "BUY"  and score < -30:
+                mult = 0.88   # CAUTION + BUY contra EUR bearish — penalidade moderada
+            elif signal == "SELL" and score >  30:
+                mult = 0.88   # CAUTION + SELL contra EUR bullish — penalidade moderada
+            else:
+                mult = 0.95   # CAUTION neutro — penalidade mínima
+        else:
+            mult = 1.0
 
         label = f"[NEWS {rec}] {reason}" if rec != "OK" or abs(score) > 30 else ""
         return mult, label
